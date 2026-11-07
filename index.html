@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="加強型計算器" />
-  <meta name="description" content="無廣告、支援算式歷史紀錄與記憶功能的加強型計算器 PWA" />
+  <meta name="description" content="無廣告、支援算式歷史紀錄、mc/m+/m-/mr 記憶鍵、科學計算、貨幣與單位換算的加強型計算器 PWA" />
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" type="image/svg+xml" href="icon.svg" />
   <link rel="apple-touch-icon" href="icon.svg" />
@@ -19,40 +19,123 @@
     <!-- ==================== 頂部金屬標題列 (Top Header) ==================== -->
     <header class="chassis-header">
       <button type="button" class="menu-btn" id="btn-menu" aria-label="選單">
-        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+        <svg viewBox="0 0 24 24" width="25" height="25" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
           <line x1="3" y1="6" x2="21" y2="6"></line>
           <line x1="3" y1="12" x2="21" y2="12"></line>
           <line x1="3" y1="18" x2="21" y2="18"></line>
         </svg>
       </button>
-      <h1 class="app-brand"><strong>加強型</strong>計算器</h1>
+
+      <!-- 單位轉換分類膠囊列 (僅在「單位」分頁時顯示於頂部) -->
+      <div class="unit-category-chips hidden" id="unit-category-bar">
+        <button type="button" class="unit-chip active" data-category="length">✓ 長度</button>
+        <button type="button" class="unit-chip" data-category="area">面積</button>
+        <button type="button" class="unit-chip" data-category="volume">體積</button>
+        <button type="button" class="unit-chip" data-category="mass">質量</button>
+        <button type="button" class="unit-chip" data-category="temp">溫度</button>
+      </div>
+
+      <h1 class="app-brand" id="app-brand-title"><strong>加強型</strong>計算器</h1>
     </header>
 
     <!-- ==================== 內嵌式藍綠液晶螢幕 (LCD Display) ==================== -->
     <section class="lcd-bezel" id="lcd-bezel" aria-label="液晶顯示幕">
-      <!-- 上半部：記憶指示器 M 與當前主數字/算式顯示 -->
-      <div class="lcd-main-area" id="lcd-main-area">
-        <span class="lcd-memory-badge" id="memory-badge"></span>
-        <div class="lcd-primary-readout" id="primary-readout" aria-live="polite">0</div>
+      <!-- 【模式 A】標準與科學計算機液晶顯示 (還原截圖：上半部主數字 + 下半部對話框歷史列) -->
+      <div class="lcd-calc-mode" id="lcd-calc-mode">
+        <div class="lcd-main-area" id="lcd-main-area">
+          <div class="lcd-badges">
+            <span class="lcd-memory-badge" id="memory-badge"></span>
+            <button type="button" class="lcd-deg-badge hidden" id="btn-deg-rad">DEG</button>
+          </div>
+          <div class="lcd-primary-readout" id="primary-readout" aria-live="polite">0</div>
+        </div>
+
+        <div class="lcd-divider"></div>
+
+        <!-- 液晶下半部：歷史紀錄列 (點擊可展開完整歷史紙帶) -->
+        <div class="lcd-history-strip" id="btn-toggle-tape" role="button" tabindex="0" aria-label="展開歷史紀錄">
+          <span class="lcd-bubble-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 4h16v12H7.5L4 19.5V4z"></path>
+              <line x1="7.5" y1="8" x2="16.5" y2="8"></line>
+              <line x1="7.5" y1="11.5" x2="14.5" y2="11.5"></line>
+            </svg>
+          </span>
+          <div class="lcd-history-preview" id="history-strip-text"></div>
+          <div class="lcd-pull-handle" aria-hidden="true"></div>
+        </div>
       </div>
 
-      <!-- 液晶分隔線 -->
-      <div class="lcd-divider"></div>
-
-      <!-- 下半部：歷史紀錄列 (點擊可展開完整歷史紙帶，還原圖中對話框圖示 + 算式 + 底部橫槓) -->
-      <div class="lcd-history-strip" id="btn-toggle-tape" role="button" tabindex="0" aria-label="展開歷史紀錄">
-        <span class="lcd-bubble-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M4 4h16v12H7.5L4 19.5V4z"></path>
-            <line x1="7.5" y1="8" x2="16.5" y2="8"></line>
-            <line x1="7.5" y1="11.5" x2="14.5" y2="11.5"></line>
-          </svg>
-        </span>
-        <div class="lcd-history-preview" id="history-strip-text"></div>
-        <div class="lcd-pull-handle" aria-hidden="true"></div>
+      <!-- 【模式 B】貨幣換算液晶顯示 (整合於同款藍綠 LCD 內) -->
+      <div class="lcd-converter-mode hidden" id="lcd-currency-mode">
+        <div class="lcd-rate-bar">
+          <span id="exchange-rate-label">1 USD = 32.15 TWD</span>
+          <button type="button" class="lcd-swap-mini" id="btn-swap-currency" title="上下互換貨幣">⇅ 互換</button>
+          <span id="exchange-rate-time">↻ 即時匯率基準</span>
+        </div>
+        <div class="lcd-conv-row">
+          <label class="lcd-select-wrap">
+            <span class="conv-flag" id="from-currency-flag">🇺🇸</span>
+            <select id="from-currency-select" class="lcd-select" aria-label="來源貨幣">
+              <option value="USD" selected>USD</option>
+              <option value="TWD">TWD</option>
+              <option value="JPY">JPY</option>
+              <option value="EUR">EUR</option>
+              <option value="CNY">CNY</option>
+              <option value="HKD">HKD</option>
+              <option value="KRW">KRW</option>
+              <option value="GBP">GBP</option>
+            </select>
+            <span class="lcd-caret">▾</span>
+          </label>
+          <div class="lcd-conv-val" id="currency-expr-line">0</div>
+        </div>
+        <div class="lcd-divider"></div>
+        <div class="lcd-conv-row">
+          <label class="lcd-select-wrap">
+            <span class="conv-flag" id="to-currency-flag">🇹🇼</span>
+            <select id="to-currency-select" class="lcd-select" aria-label="目標貨幣">
+              <option value="TWD" selected>TWD</option>
+              <option value="USD">USD</option>
+              <option value="JPY">JPY</option>
+              <option value="EUR">EUR</option>
+              <option value="CNY">CNY</option>
+              <option value="HKD">HKD</option>
+              <option value="KRW">KRW</option>
+              <option value="GBP">GBP</option>
+            </select>
+            <span class="lcd-caret">▾</span>
+          </label>
+          <div class="lcd-conv-res" id="currency-result-line">0.00</div>
+        </div>
       </div>
 
-      <!-- 下拉展開的完整歷史紙帶面板 (點擊液晶下半部或下拉時展開) -->
+      <!-- 【模式 C】單位轉換液晶顯示 (整合於同款藍綠 LCD 內) -->
+      <div class="lcd-converter-mode hidden" id="lcd-units-mode">
+        <div class="lcd-rate-bar">
+          <span id="unit-category-title">長度單位換算</span>
+          <button type="button" class="lcd-swap-mini" id="btn-swap-units" title="上下互換單位">⇅ 互換</button>
+        </div>
+        <div class="lcd-conv-row">
+          <label class="lcd-select-wrap">
+            <span class="conv-flag" id="from-unit-icon">📏</span>
+            <select id="from-unit-select" class="lcd-select" aria-label="來源單位"></select>
+            <span class="lcd-caret">▾</span>
+          </label>
+          <div class="lcd-conv-val" id="unit-expr-line">0</div>
+        </div>
+        <div class="lcd-divider"></div>
+        <div class="lcd-conv-row">
+          <label class="lcd-select-wrap">
+            <span class="conv-flag" id="to-unit-icon">📏</span>
+            <select id="to-unit-select" class="lcd-select" aria-label="目標單位"></select>
+            <span class="lcd-caret">▾</span>
+          </label>
+          <div class="lcd-conv-res" id="unit-result-line">0</div>
+        </div>
+      </div>
+
+      <!-- 下拉展開的完整歷史紙帶面板 (點擊液晶下半部時展開) -->
       <div class="lcd-tape-drawer hidden" id="tape-drawer">
         <div class="tape-drawer-header">
           <span class="tape-drawer-title">計算歷史紀錄 (點擊數字可重用)</span>
@@ -65,58 +148,124 @@
       </div>
     </section>
 
-    <!-- ==================== 6 列 × 4 欄 擬真金屬立體按鍵區 ==================== -->
+    <!-- ==================== 擬真金屬立體按鍵區 ==================== -->
     <main class="keypad-chassis" aria-label="計算機按鍵">
-      <!-- 第 1 列：記憶與擴充功能列 (mc, m+, m-, mr；支援左右滑動切換進階鍵 √, (), xʸ, π) -->
-      <div class="memory-row-wrapper" id="memory-row-wrapper">
-        <div class="memory-row-page active" id="mem-page-1">
-          <button type="button" class="key key-mem" data-action="mc">mc</button>
-          <button type="button" class="key key-mem" data-action="m-plus">m+</button>
-          <button type="button" class="key key-mem" data-action="m-minus">m-</button>
-          <button type="button" class="key key-mem" data-action="mr">mr</button>
+      <!-- 1. 標準 6列×4欄 金屬鍵盤 (含頂排 mc, m+, m-, mr，用於 Calculator / Currency / Units) -->
+      <div class="standard-keypad-wrap" id="keypad-standard-wrap">
+        <!-- 第 1 列：記憶與擴充功能列 (mc, m+, m-, mr；支援左右滑動切換進階鍵 √, (), xʸ) -->
+        <div class="memory-row-wrapper" id="memory-row-wrapper">
+          <div class="memory-row-page" id="mem-page-1">
+            <button type="button" class="key key-mem" data-action="mc">mc</button>
+            <button type="button" class="key key-mem" data-action="m-plus">m+</button>
+            <button type="button" class="key key-mem" data-action="m-minus">m-</button>
+            <button type="button" class="key key-mem" data-action="mr">mr</button>
+          </div>
+          <div class="memory-row-page hidden" id="mem-page-2">
+            <button type="button" class="key key-mem" data-action="parens">( )</button>
+            <button type="button" class="key key-mem" data-action="sqrt">√x</button>
+            <button type="button" class="key key-mem" data-action="power">xʸ</button>
+            <button type="button" class="key key-mem" data-action="swap-fn-row" title="切回記憶鍵">mc⋯</button>
+          </div>
         </div>
-        <div class="memory-row-page hidden" id="mem-page-2">
-          <button type="button" class="key key-mem" data-action="parens">( )</button>
-          <button type="button" class="key key-mem" data-action="sqrt">√x</button>
-          <button type="button" class="key key-mem" data-action="power">xʸ</button>
-          <button type="button" class="key key-mem" data-action="swap-fn-row" title="切回記憶鍵">mc⋯</button>
+
+        <!-- 第 2 ~ 6 列：主按鍵網格 (5 列 × 4 欄) -->
+        <div class="main-keypad-grid">
+          <!-- 第 2 列：AC (珊瑚紅), %, +/-, ÷ (冷銀灰) -->
+          <button type="button" class="key key-ac" id="btn-clear" data-action="clear">AC</button>
+          <button type="button" class="key key-op" data-action="percent">%</button>
+          <button type="button" class="key key-op" data-action="negate">
+            <span class="plus-minus-symbol"><sup>+</sup>⁄<sub>−</sub></span>
+          </button>
+          <button type="button" class="key key-op" data-action="operator" data-value="÷">÷</button>
+
+          <!-- 第 3 列：7, 8, 9 (暖香檳銀), × (冷銀灰) -->
+          <button type="button" class="key key-num" data-action="digit" data-value="7">7</button>
+          <button type="button" class="key key-num" data-action="digit" data-value="8">8</button>
+          <button type="button" class="key key-num" data-action="digit" data-value="9">9</button>
+          <button type="button" class="key key-op" data-action="operator" data-value="×">×</button>
+
+          <!-- 第 4 列：4, 5, 6 (暖香檳銀), − (冷銀灰) -->
+          <button type="button" class="key key-num" data-action="digit" data-value="4">4</button>
+          <button type="button" class="key key-num" data-action="digit" data-value="5">5</button>
+          <button type="button" class="key key-num" data-action="digit" data-value="6">6</button>
+          <button type="button" class="key key-op" data-action="operator" data-value="-">−</button>
+
+          <!-- 第 5 列：1, 2, 3 (暖香檳銀), + (冷銀灰) -->
+          <button type="button" class="key key-num" data-action="digit" data-value="1">1</button>
+          <button type="button" class="key key-num" data-action="digit" data-value="2">2</button>
+          <button type="button" class="key key-num" data-action="digit" data-value="3">3</button>
+          <button type="button" class="key key-op" data-action="operator" data-value="+">+</button>
+
+          <!-- 第 6 列：0, ., 實心五角形退格鍵, = (亮橘色) -->
+          <button type="button" class="key key-num" data-action="digit" data-value="0">0</button>
+          <button type="button" class="key key-num key-dot" data-action="decimal">.</button>
+          <button type="button" class="key key-num key-backspace" data-action="backspace" aria-label="退格">
+            <svg viewBox="0 0 36 24" width="36" height="24" aria-hidden="true">
+              <path d="M11 2 L32 2 A2 2 0 0 1 34 4 L34 20 A2 2 0 0 1 32 22 L11 22 L2 12 Z" fill="#141414" />
+              <path d="M17 7.5 L26 16.5 M26 7.5 L17 16.5" stroke="#bcbab2" stroke-width="2.8" stroke-linecap="round" />
+            </svg>
+          </button>
+          <button type="button" class="key key-equals" data-action="equals">=</button>
         </div>
       </div>
 
-      <!-- 第 2 ~ 6 列：主按鍵網格 (5 列 × 4 欄) -->
-      <div class="main-keypad-grid">
-        <!-- 第 2 列：AC (珊瑚紅), %, +/-, ÷ (冷銀灰) -->
-        <button type="button" class="key key-ac" id="btn-clear" data-action="clear">AC</button>
+      <!-- 2. 科學計算機 7列×6欄 金屬立體鍵盤 (切換至 Scientific 分頁時顯示) -->
+      <div class="scientific-keypad-grid hidden" id="keypad-scientific-wrap">
+        <!-- 第 1 列：AC, 2nd, mc, m+, m-, mr -->
+        <button type="button" class="key key-ac" id="btn-clear-sci" data-action="clear">AC</button>
+        <button type="button" class="key key-mem" id="btn-2nd" data-action="toggle-2nd">2<sup>nd</sup></button>
+        <button type="button" class="key key-mem" data-action="mc">mc</button>
+        <button type="button" class="key key-mem" data-action="m-plus">m+</button>
+        <button type="button" class="key key-mem" data-action="m-minus">m-</button>
+        <button type="button" class="key key-mem" data-action="mr">mr</button>
+
+        <!-- 第 2 列：sin, cos, tan, sinh, cosh, tanh -->
+        <button type="button" class="key key-op" id="sci-sin" data-action="sci-fn" data-fn="sin">sin</button>
+        <button type="button" class="key key-op" id="sci-cos" data-action="sci-fn" data-fn="cos">cos</button>
+        <button type="button" class="key key-op" id="sci-tan" data-action="sci-fn" data-fn="tan">tan</button>
+        <button type="button" class="key key-op" data-action="sci-fn" data-fn="sinh">sinh</button>
+        <button type="button" class="key key-op" data-action="sci-fn" data-fn="cosh">cosh</button>
+        <button type="button" class="key key-op" data-action="sci-fn" data-fn="tanh">tanh</button>
+
+        <!-- 第 3 列：π, e, √x, %, +/-, ÷ -->
+        <button type="button" class="key key-op" data-action="const" data-value="π">π</button>
+        <button type="button" class="key key-op" data-action="const" data-value="e">e</button>
+        <button type="button" class="key key-op" data-action="sqrt">√<i>x</i></button>
         <button type="button" class="key key-op" data-action="percent">%</button>
-        <button type="button" class="key key-op" data-action="negate">
-          <span class="plus-minus-symbol"><sup>+</sup>⁄<sub>−</sub></span>
-        </button>
+        <button type="button" class="key key-op" data-action="negate"><sup>+</sup>⁄<sub>−</sub></button>
         <button type="button" class="key key-op" data-action="operator" data-value="÷">÷</button>
 
-        <!-- 第 3 列：7, 8, 9 (暖香檳銀), × (冷銀灰) -->
+        <!-- 第 4 列：ln, log10, 7, 8, 9, × -->
+        <button type="button" class="key key-op" data-action="sci-fn" data-fn="ln">ln</button>
+        <button type="button" class="key key-op" data-action="sci-fn" data-fn="log10">log<sub>10</sub></button>
         <button type="button" class="key key-num" data-action="digit" data-value="7">7</button>
         <button type="button" class="key key-num" data-action="digit" data-value="8">8</button>
         <button type="button" class="key key-num" data-action="digit" data-value="9">9</button>
         <button type="button" class="key key-op" data-action="operator" data-value="×">×</button>
 
-        <!-- 第 4 列：4, 5, 6 (暖香檳銀), − (冷銀灰) -->
+        <!-- 第 5 列：x⁻¹, ³√x, 4, 5, 6, − -->
+        <button type="button" class="key key-op" data-action="sci-fn" data-fn="inv"><i>x</i><sup>-1</sup></button>
+        <button type="button" class="key key-op" data-action="sci-fn" data-fn="cbrt"><sup>3</sup>√<i>x</i></button>
         <button type="button" class="key key-num" data-action="digit" data-value="4">4</button>
         <button type="button" class="key key-num" data-action="digit" data-value="5">5</button>
         <button type="button" class="key key-num" data-action="digit" data-value="6">6</button>
         <button type="button" class="key key-op" data-action="operator" data-value="-">−</button>
 
-        <!-- 第 5 列：1, 2, 3 (暖香檳銀), + (冷銀灰) -->
+        <!-- 第 6 列：x², xʸ, 1, 2, 3, + -->
+        <button type="button" class="key key-op" data-action="sci-fn" data-fn="sq"><i>x</i><sup>2</sup></button>
+        <button type="button" class="key key-op" data-action="power"><i>x</i><sup><i>y</i></sup></button>
         <button type="button" class="key key-num" data-action="digit" data-value="1">1</button>
         <button type="button" class="key key-num" data-action="digit" data-value="2">2</button>
         <button type="button" class="key key-num" data-action="digit" data-value="3">3</button>
         <button type="button" class="key key-op" data-action="operator" data-value="+">+</button>
 
-        <!-- 第 6 列：0, ., 實心五角形退格鍵, = (亮橘色) -->
+        <!-- 第 7 列：x!, |x|, 0, ., ⌫, = -->
+        <button type="button" class="key key-op" data-action="sci-fn" data-fn="fact"><i>x</i>!</button>
+        <button type="button" class="key key-op" data-action="sci-fn" data-fn="abs">|<i>x</i>|</button>
         <button type="button" class="key key-num" data-action="digit" data-value="0">0</button>
         <button type="button" class="key key-num key-dot" data-action="decimal">.</button>
         <button type="button" class="key key-num key-backspace" data-action="backspace" aria-label="退格">
-          <!-- 原版實心黑五角形退格圖示 -->
-          <svg viewBox="0 0 36 24" width="38" height="26" aria-hidden="true">
+          <svg viewBox="0 0 36 24" width="26" height="18" aria-hidden="true">
             <path d="M11 2 L32 2 A2 2 0 0 1 34 4 L34 20 A2 2 0 0 1 32 22 L11 22 L2 12 Z" fill="#141414" />
             <path d="M17 7.5 L26 16.5 M26 7.5 L17 16.5" stroke="#bcbab2" stroke-width="2.8" stroke-linecap="round" />
           </svg>
@@ -124,6 +273,50 @@
         <button type="button" class="key key-equals" data-action="equals">=</button>
       </div>
     </main>
+
+    <!-- ==================== 底部四大功能切換列 (取代原本廣告位置，保留四大功能) ==================== -->
+    <nav class="metallic-tab-bar" aria-label="四大功能切換">
+      <button type="button" class="metal-tab active" data-tab="calculator">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="4" y="4" width="16" height="16" rx="2.5"></rect>
+          <line x1="8" y1="9" x2="11" y2="9"></line>
+          <line x1="9.5" y1="7.5" x2="9.5" y2="10.5"></line>
+          <line x1="13.5" y1="9" x2="16.5" y2="9"></line>
+          <line x1="8" y1="14.5" x2="11" y2="14.5"></line>
+          <line x1="13.5" y1="13.5" x2="16.5" y2="13.5"></line>
+          <line x1="13.5" y1="15.5" x2="16.5" y2="15.5"></line>
+        </svg>
+        <span>計算器</span>
+      </button>
+
+      <button type="button" class="metal-tab" data-tab="scientific">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 12h3l2.5 7L14 5h6"></path>
+          <line x1="16" y1="11" x2="20" y2="16"></line>
+          <line x1="20" y1="11" x2="16" y2="16"></line>
+        </svg>
+        <span>科學</span>
+      </button>
+
+      <button type="button" class="metal-tab" data-tab="currency">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="9"></circle>
+          <path d="M14.5 9a2.5 2.5 0 0 0-5 0c0 2.5 5 2 5 5a2.5 2.5 0 0 1-5 0"></path>
+          <line x1="12" y1="5.5" x2="12" y2="6.5"></line>
+          <line x1="12" y1="17.5" x2="12" y2="18.5"></line>
+        </svg>
+        <span>貨幣換算</span>
+      </button>
+
+      <button type="button" class="metal-tab" data-tab="units">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 4L5 18h14V4z"></path>
+          <path d="M14 13v2"></path>
+          <path d="M11 16v2"></path>
+        </svg>
+        <span>單位轉換</span>
+      </button>
+    </nav>
 
     <!-- ==================== 左上角 ☰ 選單對話框 ==================== -->
     <dialog class="menu-dialog" id="menu-dialog">
@@ -148,14 +341,9 @@
             <span>按鍵震動回饋</span>
             <input type="checkbox" id="toggle-vibrate" checked />
           </label>
-
-          <label class="menu-switch-row" for="toggle-Note-comment">
-            <span>歷史紀錄自動儲存於手機</span>
-            <input type="checkbox" id="toggle-Note-comment" checked disabled />
-          </label>
         </div>
 
-        <p class="menu-footer-note">無底部廣告純淨版 · 支援離線安裝於手機主畫面</p>
+        <p class="menu-footer-note">無底部廣告純淨版 · 整合計算器 / 科學 / 貨幣 / 單位四大功能</p>
       </div>
     </dialog>
 

@@ -1,13 +1,7 @@
 /* ==========================================================================
-   加強型計算器 (Calculator Plus 經典金屬拉絲擬真版)
-   100% 依使用者提供之實機截圖配色與立體導角還原：
-   - 機身底紋：銀白水平拉絲金屬質感 (#dcdcdc ~ #e6e6e6)
-   - 液晶螢幕：內嵌深邊框藍綠 LCD (#8ab8ca)，上下分層 + 底部拉桿
-   - 第一排記憶鍵 (mc, m+, m-, mr)：深岩灰藍立體鍵 (#7b828f -> #646b78)
-   - AC 鍵：珊瑚粉紅立體鍵 (#f0978f -> #dd7870)
-   - 運算符號鍵 (%, +/-, ÷, ×, −, +)：冷銀藍灰立體鍵 (#bfc4ce -> #a1a6b2)
-   - 數字鍵 (0~9, ., ⌫)：暖香檳銀灰立體鍵 (#c7c5bd -> #aba9a0)
-   - 等於鍵 (=)：亮琥珀橘立體鍵 (#f5a151 -> #e2832c)
+   加強型計算器 (Calculator Plus 經典金屬拉絲擬真版 + 四大功能分頁)
+   - 保留實機截圖 100% 經典金屬拉絲、藍綠 LCD、mc/m+/m-/mr 與 AC/%/+/-/÷ 3D 按鍵
+   - 將原本底部的廣告區塊，替換為同色系金屬質感的「計算器 / 科學 / 貨幣換算 / 單位轉換」四分頁列
    ========================================================================== */
 
 * {
@@ -37,10 +31,9 @@ body {
   max-inline-size: 460px;
   block-size: 100dvh;
   margin-inline: auto;
-  padding-block-start: calc(env(safe-area-inset-top, 0px) + 6px);
-  padding-block-end: calc(env(safe-area-inset-bottom, 0px) + 12px);
-  padding-inline: 14px;
-  /* 水平金屬拉絲紋理疊加銀白光澤漸層 */
+  padding-block-start: calc(env(safe-area-inset-top, 0px) + 4px);
+  padding-inline: 12px;
+  padding-block-end: 0;
   background-image:
     repeating-linear-gradient(
       0deg,
@@ -61,23 +54,25 @@ body {
 }
 
 /* ==========================================================================
-   1. 頂部標題列 (☰ 與 加強型計算器)
+   1. 頂部標題列 (☰ 與 加強型計算器 / 單位分類列)
    ========================================================================== */
 .chassis-header {
   flex: 0 0 auto;
   display: flex;
   align-items: safe center;
   justify-content: space-between;
-  block-size: 40px;
+  block-size: 38px;
+  gap: 8px;
   padding-inline: 2px;
   margin-block-end: 4px;
 }
 
 .menu-btn {
+  flex: 0 0 auto;
   display: inline-grid;
   place-items: center;
-  inline-size: 36px;
-  block-size: 36px;
+  inline-size: 34px;
+  block-size: 34px;
   border: none;
   border-radius: 6px;
   background: transparent;
@@ -91,14 +86,51 @@ body {
 }
 
 .app-brand {
-  font-size: 1.22rem;
+  margin-inline-start: auto;
+  font-size: 1.18rem;
   font-weight: 400;
   color: #1c1c1c;
   letter-spacing: 0.03em;
+  white-space: nowrap;
 }
 
 .app-brand strong {
   font-weight: 700;
+}
+
+/* 單位轉換分類膠囊列 */
+.unit-category-chips {
+  display: flex;
+  align-items: safe center;
+  gap: 5px;
+  overflow-x: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  flex: 1 1 auto;
+  min-inline-size: 0;
+}
+
+.unit-category-chips::-webkit-scrollbar {
+  display: none;
+}
+
+.unit-chip {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid #555;
+  background: linear-gradient(180deg, #cfd2d8 0%, #b4b8c2 100%);
+  color: #1a1a1a;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.unit-chip.active {
+  background: linear-gradient(180deg, #6f7785 0%, #58606d 100%);
+  color: #ffffff;
+  border-color: #2c313a;
 }
 
 /* ==========================================================================
@@ -106,12 +138,11 @@ body {
    ========================================================================== */
 .lcd-bezel {
   position: relative;
-  flex: 0 0 24%;
-  min-block-size: 148px;
-  max-block-size: 210px;
+  flex: 0 0 22.5%;
+  min-block-size: 138px;
+  max-block-size: 195px;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
   background: linear-gradient(180deg, #83b2c4 0%, #8ebccf 35%, #8ab8ca 100%);
   border: 2px solid #2b3a41;
   border-radius: 7px;
@@ -120,9 +151,18 @@ body {
     inset 0 -1px 2px rgba(255, 255, 255, 0.35),
     0 1px 0 rgba(255, 255, 255, 0.75);
   padding-inline: 12px;
-  padding-block: 8px 4px;
-  margin-block-end: 12px;
+  padding-block: 6px 4px;
+  margin-block-end: 10px;
   overflow: clip;
+}
+
+.lcd-calc-mode,
+.lcd-converter-mode {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  inline-size: 100%;
+  block-size: 100%;
 }
 
 /* 液晶上半部：主數字顯示區 */
@@ -136,20 +176,37 @@ body {
   padding-inline: 2px;
 }
 
-.lcd-memory-badge {
-  flex: 0 0 auto;
+.lcd-badges {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
   align-self: flex-start;
-  margin-block-start: 4px;
-  font-size: 0.92rem;
+  margin-block-start: 2px;
+}
+
+.lcd-memory-badge {
+  font-size: 0.9rem;
   font-weight: 700;
   color: #1b2e35;
+}
+
+.lcd-deg-badge {
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid rgba(27, 46, 53, 0.45);
+  background: rgba(255, 255, 255, 0.38);
+  color: #122026;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .lcd-primary-readout {
   flex: 1 1 auto;
   min-inline-size: 0;
   text-align: right;
-  font-size: clamp(2.8rem, 1.8rem + 5.5vw, 4.1rem);
+  font-size: clamp(2.6rem, 1.7rem + 5.2vw, 3.85rem);
   font-weight: 300;
   line-height: 1.05;
   color: #122026;
@@ -164,11 +221,11 @@ body {
 }
 
 .lcd-primary-readout.medium-digits {
-  font-size: clamp(2.1rem, 1.3rem + 4.2vw, 3rem);
+  font-size: clamp(2rem, 1.25rem + 4vw, 2.85rem);
 }
 
 .lcd-primary-readout.small-digits {
-  font-size: clamp(1.55rem, 1rem + 3vw, 2.2rem);
+  font-size: clamp(1.45rem, 0.95rem + 2.8vw, 2.1rem);
 }
 
 /* 液晶中間細分隔線 */
@@ -181,12 +238,12 @@ body {
 /* 液晶下半部：歷史算式預覽列 + 對話框圖示 + 底部小拉桿 */
 .lcd-history-strip {
   position: relative;
-  flex: 0 0 48px;
+  flex: 0 0 44px;
   display: flex;
   align-items: safe center;
   justify-content: space-between;
   gap: 8px;
-  padding-block-end: 6px;
+  padding-block-end: 5px;
   cursor: pointer;
   touch-action: manipulation;
 }
@@ -199,12 +256,11 @@ body {
   opacity: 0.9;
 }
 
-/* 還原截圖中算式左側漸層淡出效果：13 = 866.6666666666 */
 .lcd-history-preview {
   flex: 1 1 auto;
   min-inline-size: 0;
   text-align: right;
-  font-size: clamp(1.35rem, 1rem + 2.4vw, 1.82rem);
+  font-size: clamp(1.28rem, 0.95rem + 2.2vw, 1.72rem);
   font-weight: 300;
   color: #466673;
   white-space: nowrap;
@@ -213,7 +269,6 @@ body {
   mask-image: linear-gradient(to right, transparent 0%, rgba(0, 0, 0, 0.35) 10%, #000 24%);
 }
 
-/* 液晶底部中央小拉桿橫線 */
 .lcd-pull-handle {
   position: absolute;
   inset-inline-start: 50%;
@@ -223,6 +278,88 @@ body {
   block-size: 3px;
   border-radius: 999px;
   background-color: rgba(43, 71, 82, 0.55);
+}
+
+/* ==================== 貨幣與單位轉換 LCD 內部排版 ==================== */
+.lcd-rate-bar {
+  display: flex;
+  align-items: safe center;
+  justify-content: space-between;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: #233e49;
+  padding-block-end: 2px;
+}
+
+.lcd-swap-mini {
+  padding: 1px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(27, 46, 53, 0.4);
+  background: rgba(255, 255, 255, 0.35);
+  color: #122026;
+  font-size: 0.74rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.lcd-conv-row {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: safe center;
+  justify-content: space-between;
+  gap: 10px;
+  min-inline-size: 0;
+}
+
+.lcd-select-wrap {
+  display: inline-flex;
+  align-items: safe center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.28);
+  border: 1px solid rgba(34, 58, 68, 0.3);
+  cursor: pointer;
+}
+
+.conv-flag {
+  font-size: 1.15rem;
+}
+
+.lcd-select {
+  appearance: none;
+  border: none;
+  background: transparent;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #122026;
+  cursor: pointer;
+}
+
+.lcd-select:focus {
+  outline: none;
+}
+
+.lcd-caret {
+  font-size: 0.8rem;
+  color: #233e49;
+}
+
+.lcd-conv-val,
+.lcd-conv-res {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  text-align: right;
+  font-size: clamp(1.45rem, 1.1rem + 2.6vw, 2rem);
+  font-weight: 400;
+  color: #122026;
+  white-space: nowrap;
+  overflow-x: auto;
+}
+
+.lcd-conv-res {
+  font-weight: 600;
+  color: #18313b;
 }
 
 /* 點擊液晶下半部展開的歷史紙帶抽屜 */
@@ -277,7 +414,7 @@ body {
   padding-block: 5px;
   border-block-end: 1px dashed rgba(34, 58, 68, 0.22);
   color: #182c34;
-  font-size: 1.05rem;
+  font-size: 1.02rem;
   cursor: pointer;
 }
 
@@ -287,12 +424,12 @@ body {
 
 .tape-entry-expr {
   color: #3b5965;
-  font-size: 0.92rem;
+  font-size: 0.9rem;
 }
 
 .tape-entry-res {
   font-weight: 600;
-  font-size: 1.12rem;
+  font-size: 1.1rem;
 }
 
 .tape-close-bar {
@@ -304,27 +441,35 @@ body {
 }
 
 /* ==========================================================================
-   3. 6 列 × 4 欄 擬真 3D 導角按鍵區 (Skeuomorphic Beveled Keypad)
+   3. 擬真 3D 導角按鍵區 (6 列 × 4 欄 標準 + 7 列 × 6 欄 科學)
    ========================================================================== */
 .keypad-chassis {
   flex: 1 1 auto;
   display: flex;
   flex-direction: column;
-  gap: 11px;
+  min-block-size: 0;
+  margin-block-end: 8px;
+}
+
+.standard-keypad-wrap {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
   min-block-size: 0;
 }
 
 /* 第 1 列：記憶鍵列 (mc, m+, m-, mr)，高度較扁、深岩灰藍底白字 */
 .memory-row-wrapper {
   flex: 0 0 11.5%;
-  min-block-size: 46px;
-  max-block-size: 62px;
+  min-block-size: 42px;
+  max-block-size: 56px;
 }
 
 .memory-row-page {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 11px;
+  gap: 9px;
   inline-size: 100%;
   block-size: 100%;
 }
@@ -335,7 +480,17 @@ body {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   grid-template-rows: repeat(5, 1fr);
-  gap: 11px;
+  gap: 9px;
+  min-block-size: 0;
+}
+
+/* 科學計算機 7 列 × 6 欄 金屬網格 */
+.scientific-keypad-grid {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  grid-template-rows: repeat(7, 1fr);
+  gap: 6px;
   min-block-size: 0;
 }
 
@@ -352,7 +507,6 @@ body {
   cursor: pointer;
   touch-action: manipulation;
   user-select: none;
-  /* 頂部亮白反光導角 + 底部深色立體陰影 */
   box-shadow:
     inset 0 1.5px 1px rgba(255, 255, 255, 0.65),
     inset 1px 0 1px rgba(255, 255, 255, 0.35),
@@ -374,7 +528,7 @@ body {
 .key-mem {
   background: linear-gradient(180deg, #7f8693 0%, #6d7481 55%, #616875 100%);
   color: #ffffff;
-  font-size: clamp(1.35rem, 1rem + 2vw, 1.72rem);
+  font-size: clamp(1.3rem, 0.95rem + 1.9vw, 1.65rem);
   font-weight: 500;
   letter-spacing: 0.02em;
   text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.28);
@@ -388,7 +542,7 @@ body {
 .key-ac {
   background: linear-gradient(180deg, #f29d95 0%, #e78880 55%, #dc776f 100%);
   color: #1b1b1b;
-  font-size: clamp(1.65rem, 1.2rem + 2.5vw, 2.2rem);
+  font-size: clamp(1.55rem, 1.15rem + 2.3vw, 2.1rem);
   font-weight: 400;
 }
 
@@ -396,12 +550,12 @@ body {
 .key-op {
   background: linear-gradient(180deg, #c2c7d1 0%, #aeb3bf 55%, #9ea3b0 100%);
   color: #161616;
-  font-size: clamp(1.85rem, 1.35rem + 2.8vw, 2.5rem);
+  font-size: clamp(1.75rem, 1.3rem + 2.5vw, 2.35rem);
   font-weight: 400;
 }
 
 .plus-minus-symbol {
-  font-size: clamp(1.5rem, 1.1rem + 2.2vw, 2rem);
+  font-size: clamp(1.45rem, 1.05rem + 2vw, 1.9rem);
   font-weight: 500;
   line-height: 1;
 }
@@ -410,14 +564,13 @@ body {
 .key-num {
   background: linear-gradient(180deg, #c9c7bf 0%, #b7b5ac 55%, #a8a69d 100%);
   color: #151515;
-  font-size: clamp(2.1rem, 1.5rem + 3.4vw, 2.85rem);
+  font-size: clamp(1.95rem, 1.4rem + 3.1vw, 2.65rem);
   font-weight: 300;
 }
 
-/* 原版的小數點位置偏下方中央 */
 .key-dot {
   align-items: end;
-  padding-block-end: 10px;
+  padding-block-end: 8px;
   font-weight: 700;
 }
 
@@ -425,12 +578,70 @@ body {
 .key-equals {
   background: linear-gradient(180deg, #f7a65a 0%, #ec913d 55%, #df7f28 100%);
   color: #181818;
-  font-size: clamp(2.05rem, 1.45rem + 3vw, 2.7rem);
+  font-size: clamp(1.95rem, 1.4rem + 2.8vw, 2.55rem);
   font-weight: 400;
 }
 
+/* 科學計算機 6 欄緊湊字級微調 */
+.scientific-keypad-grid .key {
+  font-size: clamp(0.95rem, 0.72rem + 1.3vw, 1.2rem);
+}
+
+.scientific-keypad-grid .key-num {
+  font-size: clamp(1.3rem, 0.98rem + 1.8vw, 1.65rem);
+  font-weight: 500;
+}
+
+.scientific-keypad-grid .key-equals {
+  font-size: clamp(1.4rem, 1.05rem + 1.8vw, 1.75rem);
+}
+
 /* ==========================================================================
-   4. 左上角 ☰ 選單對話框與 Toast
+   4. 底部四大功能切換列 (取代原版底部廣告位置，金屬質感完美融合)
+   ========================================================================== */
+.metallic-tab-bar {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  margin-inline: -12px;
+  padding-block-start: 6px;
+  padding-block-end: calc(env(safe-area-inset-bottom, 0px) + 6px);
+  padding-inline: 8px;
+  background: linear-gradient(180deg, #c6c8ce 0%, #b2b5bd 100%);
+  border-block-start: 1px solid #7a7e87;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+}
+
+.metal-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: safe center;
+  justify-content: center;
+  gap: 2px;
+  padding-block: 4px;
+  margin-inline: 3px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #3a3d45;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.metal-tab.active {
+  background: linear-gradient(180deg, #6e7582 0%, #59606d 100%);
+  color: #ffffff;
+  border-color: #363b44;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+/* ==========================================================================
+   5. 左上角 ☰ 選單對話框與 Toast
    ========================================================================== */
 .menu-dialog {
   margin: auto;
@@ -522,7 +733,7 @@ body {
 .toast {
   position: absolute;
   inset-inline: 50%;
-  inset-block-end: 28px;
+  inset-block-end: 66px;
   transform: translateX(-50%);
   inline-size: max-content;
   background-color: rgba(25, 35, 40, 0.92);
