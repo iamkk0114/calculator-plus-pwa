@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#2c3038"/>
+  <rect x="44" y="44" width="424" height="148" rx="36" fill="#d8ebff"/>
+  <text x="436" y="144" font-family="Arial, sans-serif" font-size="78" font-weight="bold" fill="#14171a" text-anchor="end">13,904</text>
+  <!-- 左上深色 C 鍵 -->
+  <rect x="44" y="220" width="124" height="112" rx="24" fill="#383633"/>
+  <text x="106" y="294" font-family="Arial, sans-serif" font-size="64" font-weight="bold" fill="#ffffff" text-anchor="middle">C</text>
+  <!-- 右上 ÷ 鍵 -->
+  <rect x="194" y="220" width="124" height="112" rx="24" fill="#e2e1dd"/>
+  <text x="256" y="296" font-family="Arial, sans-serif" font-size="68" font-weight="bold" fill="#1c1b18" text-anchor="middle">÷</text>
+  <!-- 右上 × 鍵 -->
+  <rect x="344" y="220" width="124" height="112" rx="24" fill="#e2e1dd"/>
+  <text x="406" y="296" font-family="Arial, sans-serif" font-size="68" font-weight="bold" fill="#1c1b18" text-anchor="middle">×</text>
+  <!-- 左下白底數字鍵 -->
+  <rect x="44" y="356" width="124" height="112" rx="24" fill="#ffffff"/>
+  <text x="106" y="432" font-family="Arial, sans-serif" font-size="64" font-weight="bold" fill="#1c1b18" text-anchor="middle">7</text>
+  <rect x="194" y="356" width="124" height="112" rx="24" fill="#ffffff"/>
+  <text x="256" y="432" font-family="Arial, sans-serif" font-size="64" font-weight="bold" fill="#1c1b18" text-anchor="middle">8</text>
+  <!-- 右下琥珀金 = 鍵 -->
+  <rect x="344" y="356" width="124" height="112" rx="24" fill="#f7b239"/>
+  <text x="406" y="432" font-family="Arial, sans-serif" font-size="72" font-weight="bold" fill="#1c1b18" text-anchor="middle">=</text>
+</svg>
