@@ -1,13 +1,13 @@
 {
-  "name": "計算機加強版 (Calculator Plus)",
-  "short_name": "計算機+",
-  "description": "無廣告、支援算式歷史紀錄、科學運算、貨幣換算與單位轉換的計算機加強版",
+  "name": "加強型計算器 (Calculator Plus)",
+  "short_name": "加強型計算器",
+  "description": "無廣告、支援算式歷史紀錄與 mc/m+/m-/mr 記憶功能的加強型計算器 PWA",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#d8ebff",
-  "theme_color": "#d8ebff",
+  "background_color": "#dcdcdc",
+  "theme_color": "#dcdcdc",
   "icons": [
     {
       "src": "icon.svg",
