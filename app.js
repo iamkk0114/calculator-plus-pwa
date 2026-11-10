@@ -1,27 +1,37 @@
 /**
  * 加強型計算器 (Calculator Plus 經典金屬拉絲擬真版 + 底部四大功能分頁)
- * 依實機操作錄影 (00:00 ~ 00:07) 100% 還原運算呈現方式：
- * - 液晶上半部即時呈現完整當前算式步驟：
- *   0 -> 13 -> 13 + 5 -> (按 ×) 上半部變 18 ×、下半部出現對話框圖示與 13 + 5 -> 18 × 2 -> (按 −) 上半部變 36 −、下半部變 18 × 2 -> 36 − 10 -> (按 =) 上半部變 26、下半部變 36 − 10
- * - 退格鍵 (⌫) 在任何狀態（輸入中、剛按運算子、剛按完 =）皆可即時退格修改
+ * V5 正式版規格：
+ * 1. 回復 V3「完整累積公式」顯示方式：
+ *    - 液晶上半部顯示當前輸入數字或階段/最終結果
+ *    - 液晶下半部累積完整公式軌跡 (如 13 + 5 × 2 − 10 = 26)
+ * 2. 記憶值常駐顯示於液晶左上方：
+ *    - 當記憶值不為 0 時，左上角直接常駐顯示「M = 數值」(不跳底部閃逝 Toast)
+ * 3. 完整保留 DEL 退格鍵全狀態暢通、C/AC 兩段式清除、運算子後接 +/- 與即時匯率/單位預覽
  */
 
 (function () {
   'use strict';
 
-  const STORAGE_KEY = 'calc_plus_classic_metallic_v4';
+  const STORAGE_KEY = 'calc_plus_classic_metallic_v5';
 
   const state = {
     activeTab: 'calculator',    // 'calculator' | 'scientific' | 'currency' | 'units'
-    leftOperand: '0',           // 左運算元字串 (如 '0', '13', '18', '36', '26')
-    operator: null,             // 當前二元運算子 ('+', '-', '×', '÷', '^' 或 null)
-    rightOperand: '',           // 右運算元字串 (如 '', '5', '2', '10')
-    justEvaluated: false,       // 是否剛按完 =
-    lastStepText: '',           // 液晶下半部顯示的上一筆步驟 (如 '13 + 5', '18 × 2', '36 − 10')
+    currentInput: '0',          // 液晶上半部主顯示數字字串
+    previousValue: null,        // 累積計算中的前值
+    pendingOperator: null,      // 等待執行的運算子 ('+', '-', '×', '÷', '^')
+    waitingForOperand: false,   // 是否剛按過運算子或 =，等待輸入新數字
+    runningTrail: '',           // 正在輸入中的完整累積算式軌跡 (如 '13 + 5 × ')
+    lastCompletedLine: '11,266.6666666666 ÷ 13 = 866.6666666666', // 液晶下半部顯示的最近完成完整算式
     memory: 0,                  // 記憶值 (mc, m+, m-, mr)
     isDegree: true,             // true: DEG, false: RAD
     isSecondFn: false,          // 科學模式 2nd 切換
-    history: [],                // [{ expr: '13 + 5', result: '18', rawResult: '18' }]
+    history: [
+      {
+        expr: '11,266.6666666666 ÷ 13',
+        result: '866.6666666666',
+        rawResult: '866.6666666666'
+      }
+    ],
     vibrate: true,
     fnRowPage: 1,               // 1: mc/m+/m-/mr, 2: ()/√x/xʸ/mc
     currency: {
@@ -65,7 +75,7 @@
         km: { name: 'km (公里)', factor: 1000 },
         m: { name: 'm (公尺)', factor: 1 },
         cm: { name: 'cm (公分)', factor: 0.01 },
-        mm: { name: 'mm (公釐)', factor: 0.001 },
+        mm: { name: 'mm (公釐)', factor: 1e-3 },
         mi: { name: 'mi (英里)', factor: 1609.344 },
         ft: { name: 'ft (英尺)', factor: 0.3048 },
         in: { name: 'in (英寸)', factor: 0.0254 }
@@ -79,7 +89,7 @@
         ping: { name: '坪 (台灣坪)', factor: 3.305785 },
         km2: { name: 'km² (平方公里)', factor: 1e6 },
         ha: { name: 'ha (公頃)', factor: 10000 },
-        cm2: { name: 'cm² (平方公分)', factor: 0.0001 },
+        cm2: { name: 'cm² (平方公分)', factor: 1e-4 },
         ft2: { name: 'ft² (平方英尺)', factor: 0.092903 }
       }
     },
@@ -88,7 +98,7 @@
       icon: '🧪',
       items: {
         L: { name: 'L (公升)', factor: 1 },
-        mL: { name: 'mL (毫升)', factor: 0.001 },
+        mL: { name: 'mL (毫升)', factor: 1e-3 },
         m3: { name: 'm³ (立方公尺)', factor: 1000 },
         gal: { name: 'gal (美制加侖)', factor: 3.78541178 },
         floz: { name: 'fl oz (液量盎司)', factor: 0.0295735 }
@@ -99,7 +109,7 @@
       icon: '⚖️',
       items: {
         kg: { name: 'kg (公斤)', factor: 1 },
-        g: { name: 'g (公克)', factor: 0.001 },
+        g: { name: 'g (公克)', factor: 1e-3 },
         mg: { name: 'mg (毫克)', factor: 1e-6 },
         t: { name: 't (公噸)', factor: 1000 },
         lb: { name: 'lb (磅)', factor: 0.45359237 },
@@ -130,7 +140,6 @@
     memoryBadge: document.getElementById('memory-badge'),
     btnDegRad: document.getElementById('btn-deg-rad'),
     historyStripText: document.getElementById('history-strip-text'),
-    bubbleIcon: document.querySelector('.lcd-bubble-icon'),
     btnToggleTape: document.getElementById('btn-toggle-tape'),
     tapeDrawer: document.getElementById('tape-drawer'),
     tapeList: document.getElementById('tape-list'),
@@ -176,7 +185,7 @@
     toast: document.getElementById('toast')
   };
 
-  // ==================== 數值精度與格式化輔助 ====================
+  // ==================== 數值精度與千分位格式化 ====================
 
   function fixPrecision(num) {
     if (!Number.isFinite(num)) return num;
@@ -206,41 +215,25 @@
     return (isNeg ? '-' : '') + intPart + decPart;
   }
 
-  /**
-   * 將內部運算子轉為原版液晶顯示符號 ('-' 顯示為 '−')
-   */
   function formatOperatorSymbol(op) {
     if (op === '-') return '−';
     return op || '';
   }
 
   /**
-   * 組合液晶上半部的主顯示字串 (100% 對應錄影畫面：'0' -> '13' -> '13 + 5' -> '18 ×' -> '18 × 2' -> '26')
-   */
-  function buildUpperReadoutText() {
-    const leftFormatted = formatNumberDisplay(state.leftOperand);
-    if (!state.operator) {
-      return leftFormatted;
-    }
-    const opSymbol = formatOperatorSymbol(state.operator);
-    if (state.rightOperand === '') {
-      return `${leftFormatted} ${opSymbol}`;
-    }
-    const rightFormatted = formatNumberDisplay(state.rightOperand);
-    return `${leftFormatted} ${opSymbol} ${rightFormatted}`;
-  }
-
-  /**
-   * 取得目前算式的即時數值結果 (供記憶鍵、科學函數、匯率與單位即時換算使用)
+   * 取得目前算式的即時總和數值 (供貨幣換算、單位轉換與記憶鍵在未按 = 前也能即時運算)
    */
   function getActiveNumericValue() {
-    const leftVal = Number(state.leftOperand);
-    if (!state.operator || state.rightOperand === '' || state.rightOperand === '-') {
-      return leftVal;
+    const currentVal = Number(state.currentInput);
+    if (
+      state.previousValue !== null &&
+      state.pendingOperator &&
+      !state.waitingForOperand &&
+      !Number.isNaN(currentVal)
+    ) {
+      return performCalculation(state.previousValue, currentVal, state.pendingOperator);
     }
-    const rightVal = Number(state.rightOperand);
-    if (Number.isNaN(rightVal)) return leftVal;
-    return performCalculation(leftVal, rightVal, state.operator);
+    return Number.isNaN(currentVal) ? 0 : currentVal;
   }
 
   // ==================== 狀態儲存與載入 ====================
@@ -286,37 +279,44 @@
   // ==================== 畫面更新與四大分頁同步 ====================
 
   function updateDisplay() {
-    // 1. 液晶上半部：顯示目前算式或數值 (如 '0', '13 + 5', '18 ×', '36 − 10', '26')
-    const upperText = buildUpperReadoutText();
-    el.primaryReadout.textContent = upperText;
+    // 1. 液晶上半部：顯示目前輸入數字或計算結果
+    const formattedMain = formatNumberDisplay(state.currentInput);
+    el.primaryReadout.textContent = formattedMain;
 
-    const charLen = upperText.length;
+    const charLen = formattedMain.length;
     el.primaryReadout.classList.toggle('medium-digits', charLen > 10 && charLen <= 15);
     el.primaryReadout.classList.toggle('small-digits', charLen > 15);
     el.primaryReadout.scrollLeft = el.primaryReadout.scrollWidth;
 
-    // 2. 記憶指示符號 M 與 DEG/RAD
-    el.memoryBadge.textContent = state.memory !== 0 ? 'M' : '';
+    // 2. 液晶左上方：常駐顯示 M = 記憶數值 (不為 0 時直接顯示完整數字，不跳閃逝 Toast)
+    if (state.memory !== 0) {
+      el.memoryBadge.textContent = `M = ${formatNumberDisplay(String(state.memory))}`;
+    } else {
+      el.memoryBadge.textContent = '';
+    }
     el.btnDegRad.textContent = state.isDegree ? 'DEG' : 'RAD';
 
-    // 3. 液晶下半部：顯示上一筆完成的算式步驟 (如 '13 + 5', '18 × 2', '36 − 10')
-    el.historyStripText.textContent = state.lastStepText || '';
-    el.historyStripText.scrollLeft = el.historyStripText.scrollWidth;
-    if (el.bubbleIcon) {
-      el.bubbleIcon.classList.toggle('invisible', !state.lastStepText);
+    // 3. 液晶下半部：顯示正在累積的完整算式軌跡，或最近完成的完整公式 (如 13 + 5 × 2 − 10 = 26)
+    if (state.runningTrail) {
+      const previewTrail = state.waitingForOperand
+        ? state.runningTrail
+        : `${state.runningTrail}${formattedMain}`;
+      el.historyStripText.textContent = previewTrail;
+    } else {
+      el.historyStripText.textContent = state.lastCompletedLine || '';
     }
+    el.historyStripText.scrollLeft = el.historyStripText.scrollWidth;
 
-    // 4. AC 與 C 按鈕文字動態切換 (當上半部已歸零時顯示 AC，有內容時顯示 C)
-    const isUpperZero =
-      state.leftOperand === '0' && state.operator === null && state.rightOperand === '';
-    const clearLabel = isUpperZero ? 'AC' : 'C';
+    // 4. AC 與 C 按鈕文字動態切換 (當主顯示已歸零時顯示 AC，有數字時顯示 C)
+    const isCurrentZero = state.currentInput === '0';
+    const clearLabel = isCurrentZero ? 'AC' : 'C';
     el.btnClear.textContent = clearLabel;
     if (el.btnClearSci) el.btnClearSci.textContent = clearLabel;
 
     // 5. 高亮當前等待中的運算子按鈕
     document.querySelectorAll('.key-op[data-action="operator"]').forEach((btn) => {
       const isPending =
-        state.operator === btn.dataset.value && state.rightOperand === '';
+        state.waitingForOperand && btn.dataset.value === state.pendingOperator;
       btn.classList.toggle('active-operator', isPending);
     });
 
@@ -339,7 +339,12 @@
     el.exchangeRateLabel.textContent = `1 ${from} = ${crossRate} ${to}`;
     el.exchangeRateTime.textContent = `↻ ${updatedAt}`;
 
-    el.currencyExprLine.textContent = buildUpperReadoutText();
+    const displayExpr = state.runningTrail
+      ? state.waitingForOperand
+        ? state.runningTrail.trim()
+        : `${state.runningTrail}${formatNumberDisplay(state.currentInput)}`
+      : formatNumberDisplay(state.currentInput);
+    el.currencyExprLine.textContent = displayExpr;
 
     const numVal = getActiveNumericValue();
     if (Number.isFinite(numVal)) {
@@ -395,7 +400,13 @@
   }
 
   function updateUnitsDisplay() {
-    el.unitExprLine.textContent = buildUpperReadoutText();
+    const displayExpr = state.runningTrail
+      ? state.waitingForOperand
+        ? state.runningTrail.trim()
+        : `${state.runningTrail}${formatNumberDisplay(state.currentInput)}`
+      : formatNumberDisplay(state.currentInput);
+    el.unitExprLine.textContent = displayExpr;
+
     const numVal = getActiveNumericValue();
     if (Number.isFinite(numVal)) {
       const converted = convertUnitValue(
@@ -460,16 +471,10 @@
 
       row.addEventListener('click', () => {
         vibrateTap();
-        const picked = String(item.rawResult || item.result.replace(/,/g, ''));
-        if (state.operator !== null) {
-          state.rightOperand = picked;
-        } else {
-          state.leftOperand = picked;
-          state.justEvaluated = false;
-        }
+        state.currentInput = String(item.rawResult || item.result.replace(/,/g, ''));
+        state.waitingForOperand = false;
         el.tapeDrawer.classList.add('hidden');
         updateDisplay();
-        showToast('已帶入歷史數值');
       });
 
       el.tapeList.appendChild(row);
@@ -478,7 +483,7 @@
     el.tapeList.scrollTop = el.tapeList.scrollHeight;
   }
 
-  // ==================== 運算核心邏輯 (100% 依實機錄影行為) ====================
+  // ==================== 運算核心邏輯 (V3 完整公式累積 + 全狀態防呆) ====================
 
   function performCalculation(firstVal, secondVal, operator) {
     switch (operator) {
@@ -498,437 +503,334 @@
     }
   }
 
-  function recordCompletedStep(stepExpr, resultVal) {
-    const resStr = String(resultVal);
-    const formattedRes = formatNumberDisplay(resStr);
-    // 錄影畫面：下半部僅顯示剛完成的算式本體 (如 '13 + 5', '18 × 2', '36 − 10')
-    state.lastStepText = stepExpr;
-    state.history.push({
-      expr: stepExpr,
-      result: formattedRes,
-      rawResult: resStr
-    });
-    if (state.history.length > 100) {
-      state.history.shift();
-    }
-  }
-
   function handleDigit(digit) {
-    if (state.leftOperand === 'Error') {
-      state.leftOperand = digit;
-      state.operator = null;
-      state.rightOperand = '';
-      state.justEvaluated = false;
+    if (state.currentInput === 'Error') {
+      state.currentInput = digit;
+      state.waitingForOperand = false;
       return;
     }
 
-    // 情況 1：尚未按運算子，正在輸入左運算元
-    if (state.operator === null) {
-      if (state.justEvaluated) {
-        state.leftOperand = digit;
-        state.justEvaluated = false;
-        return;
-      }
-      const rawDigits = state.leftOperand.replace(/[-.]/g, '');
-      if (rawDigits.length >= 15) return;
-
-      if (state.leftOperand === '0') {
-        state.leftOperand = digit;
-      } else if (state.leftOperand === '-0') {
-        state.leftOperand = '-' + digit;
-      } else {
-        state.leftOperand += digit;
-      }
+    if (state.waitingForOperand) {
+      state.currentInput = digit;
+      state.waitingForOperand = false;
       return;
     }
 
-    // 情況 2：已按過運算子，正在輸入右運算元 (例如 '13 +' -> '13 + 5')
-    const rawRight = state.rightOperand.replace(/[-.]/g, '');
-    if (rawRight.length >= 15) return;
+    const rawDigits = state.currentInput.replace(/[-.]/g, '');
+    if (rawDigits.length >= 15) return;
 
-    if (state.rightOperand === '' || state.rightOperand === '0') {
-      state.rightOperand = digit;
-    } else if (state.rightOperand === '-') {
-      state.rightOperand = '-' + digit;
+    if (state.currentInput === '0') {
+      state.currentInput = digit;
+    } else if (state.currentInput === '-0') {
+      state.currentInput = '-' + digit;
     } else {
-      state.rightOperand += digit;
+      state.currentInput += digit;
     }
   }
 
   function handleDecimal() {
-    if (state.leftOperand === 'Error') {
-      state.leftOperand = '0.';
-      state.operator = null;
-      state.rightOperand = '';
-      state.justEvaluated = false;
+    if (state.waitingForOperand || state.currentInput === 'Error') {
+      state.currentInput = '0.';
+      state.waitingForOperand = false;
       return;
     }
 
-    if (state.operator === null) {
-      if (state.justEvaluated) {
-        state.leftOperand = '0.';
-        state.justEvaluated = false;
+    if (!state.currentInput.includes('.')) {
+      state.currentInput += '.';
+    }
+  }
+
+  function handleOperator(nextOperator) {
+    const inputValue = Number(state.currentInput);
+    if (Number.isNaN(inputValue)) return;
+
+    const opSym = formatOperatorSymbol(nextOperator);
+
+    // 若剛按過運算子又馬上換按另一個運算子，直接替換尾端運算子
+    if (state.pendingOperator && state.waitingForOperand) {
+      state.pendingOperator = nextOperator;
+      state.runningTrail = state.runningTrail.replace(/[+\-−×÷^]\s*$/, `${opSym} `);
+      return;
+    }
+
+    if (state.previousValue === null) {
+      state.previousValue = inputValue;
+      state.runningTrail = `${formatNumberDisplay(state.currentInput)} ${opSym} `;
+    } else if (state.pendingOperator) {
+      const result = performCalculation(
+        state.previousValue,
+        inputValue,
+        state.pendingOperator
+      );
+
+      if (Number.isNaN(result) || !Number.isFinite(result)) {
+        state.currentInput = 'Error';
+        state.previousValue = null;
+        state.pendingOperator = null;
+        state.runningTrail = '';
+        state.waitingForOperand = true;
         return;
       }
-      if (!state.leftOperand.includes('.')) {
-        state.leftOperand += '.';
-      }
-      return;
+
+      state.previousValue = result;
+      state.currentInput = String(result);
+      state.runningTrail += `${formatNumberDisplay(String(inputValue))} ${opSym} `;
     }
 
-    if (state.rightOperand === '' || state.rightOperand === '-') {
-      state.rightOperand += '0.';
-    } else if (!state.rightOperand.includes('.')) {
-      state.rightOperand += '.';
-    }
+    state.waitingForOperand = true;
+    state.pendingOperator = nextOperator;
   }
 
-  /**
-   * 按下運算子 (+, -, ×, ÷, ^)：
-   * - 若目前只有左運算元 (如 '13')：上半部直接顯示 '13 +'
-   * - 若已按過運算子但還沒輸右運算元 (如 '13 +')：直接替換為新運算子 '13 ×'
-   * - 若已有完整二元算式 (如 '13 + 5') 又按下 '×' (錄影 00:03)：
-   *   1. 計算 13 + 5 = 18
-   *   2. 將 '13 + 5' 移至液晶下半部 (lastStepText = '13 + 5')
-   *   3. 液晶上半部變為 '18 ×' (leftOperand = '18', operator = '×', rightOperand = '')
-   */
-  function handleOperator(nextOperator) {
-    if (state.leftOperand === 'Error') return;
-    state.justEvaluated = false;
-
-    if (state.operator === null) {
-      // 去除尾端多餘小數點
-      if (state.leftOperand.endsWith('.')) {
-        state.leftOperand = state.leftOperand.slice(0, -1);
-      }
-      state.operator = nextOperator;
-      state.rightOperand = '';
-      return;
-    }
-
-    if (state.rightOperand === '' || state.rightOperand === '-') {
-      state.operator = nextOperator;
-      state.rightOperand = '';
-      return;
-    }
-
-    // 已有 leftOperand + operator + rightOperand，執行階段結算並往下傳遞
-    const firstVal = Number(state.leftOperand);
-    const secondVal = Number(state.rightOperand);
-    const stepExpr = buildUpperReadoutText();
-    const result = performCalculation(firstVal, secondVal, state.operator);
-
-    if (Number.isNaN(result) || !Number.isFinite(result)) {
-      state.leftOperand = 'Error';
-      state.operator = null;
-      state.rightOperand = '';
-      state.lastStepText = stepExpr;
-      return;
-    }
-
-    recordCompletedStep(stepExpr, result);
-    state.leftOperand = String(result);
-    state.operator = nextOperator;
-    state.rightOperand = '';
-  }
-
-  /**
-   * 按下等於鍵 (=) (錄影 00:06 ~ 00:07)：
-   * - 例如上半部為 '36 − 10'，按下 '=' 後：
-   *   1. 計算 36 − 10 = 26
-   *   2. 將 '36 − 10' 移至液晶下半部 (lastStepText = '36 − 10')
-   *   3. 液晶上半部顯示 '26'
-   */
   function handleEquals() {
-    if (state.leftOperand === 'Error' || state.operator === null) {
+    const inputValue = Number(state.currentInput);
+    if (state.pendingOperator === null || state.previousValue === null) {
       return;
     }
 
-    const firstVal = Number(state.leftOperand);
-    // 若按了 '10 +' 直接按 '='，則以左運算元自身作為右運算元
-    const effectiveRightStr =
-      state.rightOperand === '' || state.rightOperand === '-'
-        ? state.leftOperand
-        : state.rightOperand;
-    const secondVal = Number(effectiveRightStr);
+    const result = performCalculation(
+      state.previousValue,
+      inputValue,
+      state.pendingOperator
+    );
 
-    const stepExpr = `${formatNumberDisplay(state.leftOperand)} ${formatOperatorSymbol(
-      state.operator
-    )} ${formatNumberDisplay(effectiveRightStr)}`;
-
-    const result = performCalculation(firstVal, secondVal, state.operator);
+    const opSym = formatOperatorSymbol(state.pendingOperator);
+    const exprRecord = `${
+      state.runningTrail
+        ? state.runningTrail.trim()
+        : `${formatNumberDisplay(String(state.previousValue))} ${opSym}`
+    } ${formatNumberDisplay(String(inputValue))}`;
 
     if (Number.isNaN(result) || !Number.isFinite(result)) {
-      state.leftOperand = 'Error';
-      state.lastStepText = stepExpr;
+      state.currentInput = 'Error';
+      state.lastCompletedLine = `${exprRecord} = Error`;
     } else {
-      recordCompletedStep(stepExpr, result);
-      state.leftOperand = String(result);
+      const resultStr = String(result);
+      const formattedRes = formatNumberDisplay(resultStr);
+      const completedLine = `${exprRecord} = ${formattedRes}`;
+
+      state.currentInput = resultStr;
+      state.lastCompletedLine = completedLine;
+
+      state.history.push({
+        expr: exprRecord,
+        result: formattedRes,
+        rawResult: resultStr
+      });
+      if (state.history.length > 100) {
+        state.history.shift();
+      }
     }
 
-    state.operator = null;
-    state.rightOperand = '';
-    state.justEvaluated = true;
+    state.previousValue = null;
+    state.pendingOperator = null;
+    state.runningTrail = '';
+    state.waitingForOperand = true;
   }
 
-  /**
-   * Calculator Plus 百分比 (%) 邏輯：
-   * - 加減法中 (100 + 10%)：右運算元 10% 轉為 100 * (10 / 100) = 10，畫面顯示 '100 + 10'
-   * - 乘除法或單獨數字時 (200 × 15% 或 50%)：轉為 Value / 100
-   */
   function handlePercent() {
-    if (state.leftOperand === 'Error') return;
+    const currentVal = Number(state.currentInput);
+    if (Number.isNaN(currentVal)) return;
 
-    if (state.operator === null) {
-      const val = Number(state.leftOperand);
-      if (Number.isNaN(val)) return;
-      state.leftOperand = String(fixPrecision(val / 100));
-      state.justEvaluated = false;
-      return;
-    }
-
-    if (state.rightOperand === '' || state.rightOperand === '-') return;
-    const leftVal = Number(state.leftOperand);
-    const rightVal = Number(state.rightOperand);
-    if (Number.isNaN(leftVal) || Number.isNaN(rightVal)) return;
-
-    let pctVal;
-    if (state.operator === '+' || state.operator === '-') {
-      pctVal = fixPrecision(leftVal * (rightVal / 100));
+    let percentVal;
+    if (
+      state.previousValue !== null &&
+      (state.pendingOperator === '+' || state.pendingOperator === '-')
+    ) {
+      percentVal = fixPrecision(state.previousValue * (currentVal / 100));
     } else {
-      pctVal = fixPrecision(rightVal / 100);
+      percentVal = fixPrecision(currentVal / 100);
     }
-    state.rightOperand = String(pctVal);
+
+    state.currentInput = String(percentVal);
+    state.waitingForOperand = false;
   }
 
   /**
    * 正負號切換 (+/-)：
-   * - 若尚未按運算子：切換左運算元正負號
-   * - 若已按運算子：切換右運算元正負號 (若右運算元尚為空，預置 '-' 負號)
+   * - 若剛按過運算子準備輸入第二個數 (waitingForOperand = true)，按 +/- 會預置 '-0' 讓後續輸入直接變負數
    */
   function handleNegate() {
-    if (state.leftOperand === 'Error') return;
+    if (state.currentInput === 'Error') return;
 
-    if (state.operator === null) {
-      if (state.leftOperand === '0') return;
-      state.leftOperand = state.leftOperand.startsWith('-')
-        ? state.leftOperand.slice(1)
-        : '-' + state.leftOperand;
-      state.justEvaluated = false;
+    if (state.waitingForOperand && state.pendingOperator !== null) {
+      state.currentInput = '-0';
+      state.waitingForOperand = false;
       return;
     }
 
-    if (state.rightOperand === '') {
-      state.rightOperand = '-';
-    } else if (state.rightOperand === '-') {
-      state.rightOperand = '';
-    } else if (state.rightOperand.startsWith('-')) {
-      state.rightOperand = state.rightOperand.slice(1);
+    if (state.currentInput === '0') return;
+    if (state.currentInput.startsWith('-')) {
+      state.currentInput = state.currentInput.slice(1);
     } else {
-      state.rightOperand = '-' + state.rightOperand;
+      state.currentInput = '-' + state.currentInput;
     }
+    state.waitingForOperand = false;
   }
 
   /**
-   * 退格鍵 (DEL / ⌫)：在任何狀態下皆可由右往左逐字退格！
-   * 1. 若有右運算元 (如 '36 − 10') -> 刪減右運算元 ('36 − 1' -> '36 −')
-   * 2. 若停在運算子 (如 '36 −') -> 刪掉運算子回到 '36'
-   * 3. 若僅有左運算元 (如 '123' 或剛算完 '= 46') -> 刪減左運算元 ('46' -> '4' -> '0')
+   * 退格鍵 (DEL / ⌫)：全狀態暢通
+   * - 無論在輸入中、剛按完運算子、或剛按完 =，按下 DEL 皆可針對目前顯示數字退格修改
    */
   function handleBackspace() {
-    if (state.leftOperand === 'Error') {
-      state.leftOperand = '0';
-      state.operator = null;
-      state.rightOperand = '';
-      state.justEvaluated = false;
+    if (state.currentInput === 'Error') {
+      state.currentInput = '0';
+      state.waitingForOperand = false;
       return;
     }
 
-    // 1. 有右運算元時，刪減右運算元最後一碼
-    if (state.operator !== null && state.rightOperand !== '') {
-      state.rightOperand = state.rightOperand.slice(0, -1);
-      return;
-    }
+    // 解除等待狀態，直接針對當前顯示數字退格
+    state.waitingForOperand = false;
 
-    // 2. 停在運算子時 (如 '125 +')，先刪掉運算子回到 '125'；但若使用者期待直接改數字也支援連續退格
-    if (state.operator !== null && state.rightOperand === '') {
-      state.operator = null;
-      return;
-    }
-
-    // 3. 刪減左運算元最後一碼 (包含剛按完 '=' 的結果也可直接退格修改)
-    state.justEvaluated = false;
     if (
-      state.leftOperand.length <= 1 ||
-      (state.leftOperand.length === 2 && state.leftOperand.startsWith('-'))
+      state.currentInput.length <= 1 ||
+      (state.currentInput.length === 2 && state.currentInput.startsWith('-'))
     ) {
-      state.leftOperand = '0';
+      state.currentInput = '0';
     } else {
-      state.leftOperand = state.leftOperand.slice(0, -1);
+      state.currentInput = state.currentInput.slice(0, -1);
     }
   }
 
   /**
    * C / AC 清除鍵：
-   * - 若正在輸入右運算元 (如 '10 + 5')，按第一次 C 清除右運算元與當前算式回 '0' (或分段清除)
-   * - 當上半部已是 '0' 時，按鈕顯示 AC，再按一下連下半部歷史預覽列也清空
+   * - 當主顯示不為 '0' 時 (按鈕顯示 C)：按一下將當前輸入歸零為 '0'，保留已累積的算式軌跡，按鈕隨即變為 AC
+   * - 當主顯示已為 '0' 時 (按鈕顯示 AC)：按一下清除整條進行中算式與暫存狀態
    */
   function handleClear() {
-    const isUpperZero =
-      state.leftOperand === '0' && state.operator === null && state.rightOperand === '';
-
-    if (isUpperZero) {
-      // AC：清除下半部殘留算式
-      state.lastStepText = '';
-      state.justEvaluated = false;
-      return;
+    if (state.currentInput !== '0') {
+      state.currentInput = '0';
+      state.waitingForOperand = false;
+    } else {
+      state.currentInput = '0';
+      state.previousValue = null;
+      state.pendingOperator = null;
+      state.runningTrail = '';
+      state.waitingForOperand = false;
     }
-
-    // 若正在輸入右運算元 (如 '10 + 5')，按一下 C 只清掉右運算元 '5'，保留 '10 +' 讓使用者重輸第二個數字
-    if (state.operator !== null && state.rightOperand !== '') {
-      state.rightOperand = '';
-      return;
-    }
-
-    // 否則將上半部歸零為 '0' (按鈕隨即切換為 AC)
-    state.leftOperand = '0';
-    state.operator = null;
-    state.rightOperand = '';
-    state.justEvaluated = false;
   }
 
-  // ==================== 記憶鍵與科學函數 ====================
+  // ==================== 記憶鍵 (mc, m+, m-, mr) 與科學函數 ====================
 
   function handleMemory(action) {
-    const activeVal = getActiveNumericValue();
-    const safeVal = Number.isFinite(activeVal) ? activeVal : 0;
+    const val = getActiveNumericValue();
+    const safeVal = Number.isFinite(val) ? val : 0;
 
     switch (action) {
       case 'mc':
         state.memory = 0;
-        showToast('記憶已清除 (mc)');
         break;
       case 'm-plus':
-        // 若上半部有未完成算式 (如 13 + 5)，先完成結算再加進記憶
-        if (state.operator !== null && state.rightOperand !== '') {
-          handleEquals();
-        }
         state.memory = fixPrecision(state.memory + safeVal);
-        state.justEvaluated = true;
-        showToast(`M+ (${formatNumberDisplay(String(state.memory))})`);
+        state.waitingForOperand = true;
         break;
       case 'm-minus':
-        if (state.operator !== null && state.rightOperand !== '') {
-          handleEquals();
-        }
         state.memory = fixPrecision(state.memory - safeVal);
-        state.justEvaluated = true;
-        showToast(`M- (${formatNumberDisplay(String(state.memory))})`);
+        state.waitingForOperand = true;
         break;
       case 'mr':
-        if (state.operator !== null) {
-          state.rightOperand = String(state.memory);
-        } else {
-          state.leftOperand = String(state.memory);
-          state.justEvaluated = false;
-        }
+        state.currentInput = String(state.memory);
+        state.waitingForOperand = false;
         break;
-    }
-  }
-
-  function applyUnaryMath(fnLabel, computeFn) {
-    const targetStr =
-      state.operator !== null && state.rightOperand !== ''
-        ? state.rightOperand
-        : state.leftOperand;
-    const val = Number(targetStr);
-    if (Number.isNaN(val)) return;
-
-    const rawRes = computeFn(val);
-    if (Number.isNaN(rawRes) || !Number.isFinite(rawRes)) {
-      state.leftOperand = 'Error';
-      state.operator = null;
-      state.rightOperand = '';
-      return;
-    }
-
-    const cleanRes = fixPrecision(rawRes);
-    const stepExpr = `${fnLabel}(${formatNumberDisplay(targetStr)})`;
-
-    if (state.operator !== null && state.rightOperand !== '') {
-      state.rightOperand = String(cleanRes);
-    } else {
-      recordCompletedStep(stepExpr, cleanRes);
-      state.leftOperand = String(cleanRes);
-      state.operator = null;
-      state.rightOperand = '';
-      state.justEvaluated = true;
     }
   }
 
   function handleSqrt() {
-    applyUnaryMath('√', (v) => (v < 0 ? NaN : Math.sqrt(v)));
+    const val = Number(state.currentInput);
+    if (val < 0 || Number.isNaN(val)) {
+      state.currentInput = 'Error';
+      return;
+    }
+    const res = fixPrecision(Math.sqrt(val));
+    const exprText = `√(${formatNumberDisplay(state.currentInput)})`;
+    const resText = formatNumberDisplay(String(res));
+    state.lastCompletedLine = `${exprText} = ${resText}`;
+    state.currentInput = String(res);
+    state.waitingForOperand = true;
   }
 
   function handleScientificFn(fnName) {
+    const val = Number(state.currentInput);
+    if (Number.isNaN(val)) return;
+
     const toRad = (x) => (state.isDegree ? (x * Math.PI) / 180 : x);
     const fromRad = (x) => (state.isDegree ? (x * 180) / Math.PI : x);
 
+    let res = NaN;
+    let label = fnName;
+
     switch (fnName) {
       case 'sin':
-        applyUnaryMath(
-          state.isSecondFn ? 'sin⁻¹' : 'sin',
-          (v) => (state.isSecondFn ? fromRad(Math.asin(v)) : Math.sin(toRad(v)))
-        );
+        res = state.isSecondFn ? fromRad(Math.asin(val)) : Math.sin(toRad(val));
+        label = state.isSecondFn ? 'sin⁻¹' : 'sin';
         break;
       case 'cos':
-        applyUnaryMath(
-          state.isSecondFn ? 'cos⁻¹' : 'cos',
-          (v) => (state.isSecondFn ? fromRad(Math.acos(v)) : Math.cos(toRad(v)))
-        );
+        res = state.isSecondFn ? fromRad(Math.acos(val)) : Math.cos(toRad(val));
+        label = state.isSecondFn ? 'cos⁻¹' : 'cos';
         break;
       case 'tan':
-        applyUnaryMath(
-          state.isSecondFn ? 'tan⁻¹' : 'tan',
-          (v) => (state.isSecondFn ? fromRad(Math.atan(v)) : Math.tan(toRad(v)))
-        );
+        res = state.isSecondFn ? fromRad(Math.atan(val)) : Math.tan(toRad(val));
+        label = state.isSecondFn ? 'tan⁻¹' : 'tan';
         break;
       case 'sinh':
-        applyUnaryMath('sinh', (v) => Math.sinh(v));
+        res = Math.sinh(val);
         break;
       case 'cosh':
-        applyUnaryMath('cosh', (v) => Math.cosh(v));
+        res = Math.cosh(val);
         break;
       case 'tanh':
-        applyUnaryMath('tanh', (v) => Math.tanh(v));
+        res = Math.tanh(val);
         break;
       case 'ln':
-        applyUnaryMath('ln', (v) => (v <= 0 ? NaN : Math.log(v)));
+        res = val <= 0 ? NaN : Math.log(val);
         break;
       case 'log10':
-        applyUnaryMath('log₁₀', (v) => (v <= 0 ? NaN : Math.log10(v)));
+        res = val <= 0 ? NaN : Math.log10(val);
+        label = 'log₁₀';
         break;
       case 'inv':
-        applyUnaryMath('1/', (v) => (v === 0 ? NaN : 1 / v));
+        res = val === 0 ? NaN : 1 / val;
+        label = '1/';
         break;
       case 'cbrt':
-        applyUnaryMath('³√', (v) => Math.cbrt(v));
+        res = Math.cbrt(val);
+        label = '³√';
         break;
       case 'sq':
-        applyUnaryMath('sqr', (v) => v * v);
+        res = val * val;
+        label = 'sqr';
         break;
       case 'abs':
-        applyUnaryMath('abs', (v) => Math.abs(v));
+        res = Math.abs(val);
+        label = 'abs';
         break;
-      case 'fact':
-        applyUnaryMath('fact', (v) => {
-          if (v < 0 || !Number.isInteger(v) || v > 170) return NaN;
+      case 'fact': {
+        if (val < 0 || !Number.isInteger(val) || val > 170) {
+          res = NaN;
+        } else {
           let f = 1;
-          for (let i = 2; i <= v; i++) f *= i;
-          return f;
-        });
+          for (let i = 2; i <= val; i++) f *= i;
+          res = f;
+        }
+        label = 'fact';
         break;
+      }
     }
+
+    if (Number.isNaN(res) || !Number.isFinite(res)) {
+      state.currentInput = 'Error';
+    } else {
+      const cleanRes = fixPrecision(res);
+      const exprText = `${label}(${formatNumberDisplay(state.currentInput)})`;
+      const resText = formatNumberDisplay(String(cleanRes));
+      state.lastCompletedLine = `${exprText} = ${resText}`;
+      state.currentInput = String(cleanRes);
+      state.history.push({
+        expr: exprText,
+        result: resText,
+        rawResult: String(cleanRes)
+      });
+    }
+    state.waitingForOperand = true;
   }
 
   function toggleFnRowPage() {
@@ -988,17 +890,11 @@
         case 'sci-fn':
           handleScientificFn(btn.dataset.fn);
           break;
-        case 'const': {
-          const constStr =
+        case 'const':
+          state.currentInput =
             value === 'π' ? String(fixPrecision(Math.PI)) : String(fixPrecision(Math.E));
-          if (state.operator !== null) {
-            state.rightOperand = constStr;
-          } else {
-            state.leftOperand = constStr;
-            state.justEvaluated = false;
-          }
+          state.waitingForOperand = false;
           break;
-        }
         case 'toggle-2nd':
           state.isSecondFn = !state.isSecondFn;
           el.btn2nd.classList.toggle('active-operator', state.isSecondFn);
@@ -1013,11 +909,10 @@
             : 'tan';
           break;
         case 'parens':
-          // 若目前有待計算算式 (如 13 + 5)，按下 () 立即將當前算式打包優先計算
-          if (state.operator !== null && state.rightOperand !== '') {
+          if (state.pendingOperator && !state.waitingForOperand) {
             handleEquals();
           } else {
-            applyUnaryMath('sqr', (v) => v * v);
+            handleScientificFn('sq');
           }
           break;
         case 'swap-fn-row':
@@ -1129,7 +1024,7 @@
     el.btnClearHistory.addEventListener('click', () => {
       vibrateTap();
       state.history = [];
-      state.lastStepText = '';
+      state.lastCompletedLine = '';
       renderHistoryTape();
       updateDisplay();
       showToast('已清除歷史紀錄');
@@ -1158,15 +1053,13 @@
     el.menuSwitchFnRow.addEventListener('click', () => {
       el.menuDialog.close();
       toggleFnRowPage();
-      showToast(state.fnRowPage === 1 ? '已切換為 mc / m+ / m- / mr' : '已切換為進階功能列');
     });
 
     el.menuCopyResult.addEventListener('click', async () => {
       el.menuDialog.close();
-      const valStr = String(getActiveNumericValue());
       try {
-        await navigator.clipboard.writeText(valStr);
-        showToast(`已複製：${formatNumberDisplay(valStr)}`);
+        await navigator.clipboard.writeText(state.currentInput);
+        showToast(`已複製：${formatNumberDisplay(state.currentInput)}`);
       } catch {
         showToast('已複製結果');
       }

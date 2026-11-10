@@ -1,7 +1,7 @@
 /* ==========================================================================
    加強型計算器 (Calculator Plus 經典金屬拉絲擬真版 + 四大功能分頁)
-   - 保留實機截圖與錄影 100% 經典金屬拉絲、藍綠 LCD、mc/m+/m-/mr 與 AC/%/+/-/÷ 3D 按鍵
-   - 將原本底部的廣告區塊，替換為同色系金屬質感的「計算器 / 科學 / 貨幣換算 / 單位轉換」四分頁列
+   - 保留實機截圖 100% 經典金屬拉絲、藍綠 LCD、mc/m+/m-/mr 與 AC/%/+/-/÷ 3D 按鍵
+   - 液晶上半部左上方常駐顯示「M = 記憶數值」，下半部完整顯示累積公式軌跡
    ========================================================================== */
 
 * {
@@ -165,34 +165,45 @@ body {
   block-size: 100%;
 }
 
-/* 液晶上半部：主算式與數字顯示區 */
+/* 液晶上半部：左上方常駐顯示 M = 數值，右下方顯示主數字 */
 .lcd-main-area {
+  position: relative;
   flex: 1 1 auto;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  justify-content: flex-end;
   min-inline-size: 0;
-  gap: 8px;
   padding-inline: 2px;
 }
 
 .lcd-badges {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 2px;
+  inset-inline-end: 2px;
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  align-self: flex-start;
-  margin-block-start: 2px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  pointer-events: none;
+  z-index: 2;
 }
 
 .lcd-memory-badge {
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   font-weight: 700;
-  color: #1b2e35;
+  color: #1b313a;
+  letter-spacing: 0.01em;
+  max-inline-size: 72%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .lcd-deg-badge {
-  padding: 2px 7px;
+  pointer-events: auto;
+  margin-inline-start: auto;
+  padding: 1px 7px;
   border-radius: 4px;
   border: 1px solid rgba(27, 46, 53, 0.45);
   background: rgba(255, 255, 255, 0.38);
@@ -203,12 +214,13 @@ body {
 }
 
 .lcd-primary-readout {
-  flex: 1 1 auto;
+  inline-size: 100%;
   min-inline-size: 0;
   text-align: right;
-  font-size: clamp(2.55rem, 1.65rem + 5vw, 3.8rem);
+  font-size: clamp(2.5rem, 1.65rem + 4.8vw, 3.65rem);
   font-weight: 300;
-  line-height: 1.08;
+  line-height: 1.05;
+  padding-block-start: 16px;
   color: #122026;
   white-space: nowrap;
   overflow-x: auto;
@@ -235,7 +247,7 @@ body {
   background-color: rgba(34, 58, 68, 0.38);
 }
 
-/* 液晶下半部：上一筆完成算式預覽列 + 對話框圖示 + 底部小拉桿 */
+/* 液晶下半部：完整公式軌跡預覽列 + 對話框圖示 + 底部小拉桿 */
 .lcd-history-strip {
   position: relative;
   flex: 0 0 44px;
@@ -254,25 +266,24 @@ body {
   align-items: center;
   color: #42616e;
   opacity: 0.9;
-  transition: opacity 0.15s ease;
-}
-
-.lcd-bubble-icon.invisible {
-  opacity: 0;
-  pointer-events: none;
 }
 
 .lcd-history-preview {
   flex: 1 1 auto;
   min-inline-size: 0;
   text-align: right;
-  font-size: clamp(1.35rem, 1rem + 2.4vw, 1.8rem);
+  font-size: clamp(1.28rem, 0.95rem + 2.2vw, 1.72rem);
   font-weight: 300;
   color: #466673;
   white-space: nowrap;
-  overflow: hidden;
-  -webkit-mask-image: linear-gradient(to right, transparent 0%, rgba(0, 0, 0, 0.35) 10%, #000 24%);
-  mask-image: linear-gradient(to right, transparent 0%, rgba(0, 0, 0, 0.35) 10%, #000 24%);
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, rgba(0, 0, 0, 0.35) 8%, #000 20%);
+  mask-image: linear-gradient(to right, transparent 0%, rgba(0, 0, 0, 0.35) 8%, #000 20%);
+}
+
+.lcd-history-preview::-webkit-scrollbar {
+  display: none;
 }
 
 .lcd-pull-handle {
