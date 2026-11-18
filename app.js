@@ -1,37 +1,29 @@
 /**
  * 加強型計算器 (Calculator Plus 經典金屬拉絲擬真版 + 底部四大功能分頁)
- * V5 正式版規格：
- * 1. 回復 V3「完整累積公式」顯示方式：
- *    - 液晶上半部顯示當前輸入數字或階段/最終結果
- *    - 液晶下半部累積完整公式軌跡 (如 13 + 5 × 2 − 10 = 26)
- * 2. 記憶值常駐顯示於液晶左上方：
- *    - 當記憶值不為 0 時，左上角直接常駐顯示「M = 數值」(不跳底部閃逝 Toast)
- * 3. 完整保留 DEL 退格鍵全狀態暢通、C/AC 兩段式清除、運算子後接 +/- 與即時匯率/單位預覽
+ * V6 正式版規格：
+ * 1. 完整累積公式符合「先乘除後加減 (標準四則運算優先順序)」，直到按下「=」才結算！
+ *    - 輸入過程不強制左到右階段結算：例如按 13 + 5 × 2 − 10 時，上方顯示當前輸入數字，下方顯示完整算式「13 + 5 × 2 − 10」
+ *    - 按下「=」時依先乘除後加減結算：13 + (5 × 2) − 10 = 13，上方顯示 13，下方顯示「13 + 5 × 2 − 10 = 13」
+ * 2. 記憶值常駐顯示於液晶左上方：「M = 數值」(不跳底部閃逝 Toast)
+ * 3. DEL 退格鍵全狀態有效（可退格當前數字，若剛按過運算子也可退格撤銷運算子回到前一個數字）
  */
 
 (function () {
   'use strict';
 
-  const STORAGE_KEY = 'calc_plus_classic_metallic_v5';
+  const STORAGE_KEY = 'calc_plus_classic_metallic_v6';
 
   const state = {
     activeTab: 'calculator',    // 'calculator' | 'scientific' | 'currency' | 'units'
-    currentInput: '0',          // 液晶上半部主顯示數字字串
-    previousValue: null,        // 累積計算中的前值
-    pendingOperator: null,      // 等待執行的運算子 ('+', '-', '×', '÷', '^')
-    waitingForOperand: false,   // 是否剛按過運算子或 =，等待輸入新數字
-    runningTrail: '',           // 正在輸入中的完整累積算式軌跡 (如 '13 + 5 × ')
-    lastCompletedLine: '11,266.6666666666 ÷ 13 = 866.6666666666', // 液晶下半部顯示的最近完成完整算式
+    currentInput: '0',          // 液晶上半部當前正在輸入的數字字串 (或按 = 後的結算結果)
+    tokens: [],                 // 已確認的公式 Token 陣列，例如 ['13', '+', '5', '×', '2', '-']
+    waitingForOperand: false,   // 是否剛按過運算子或 =
+    justEvaluated: false,       // 是否剛按完 = 結算
+    lastCompletedLine: '',      // 液晶下半部顯示的最近一筆完成公式 (如 '13 + 5 × 2 − 10 = 13')
     memory: 0,                  // 記憶值 (mc, m+, m-, mr)
     isDegree: true,             // true: DEG, false: RAD
     isSecondFn: false,          // 科學模式 2nd 切換
-    history: [
-      {
-        expr: '11,266.6666666666 ÷ 13',
-        result: '866.6666666666',
-        rawResult: '866.6666666666'
-      }
-    ],
+    history: [],                // [{ expr: '13 + 5 × 2 − 10', result: '13', rawResult: '13' }]
     vibrate: true,
     fnRowPage: 1,               // 1: mc/m+/m-/mr, 2: ()/√x/xʸ/mc
     currency: {
@@ -195,6 +187,7 @@
 
   function formatNumberDisplay(rawStr) {
     if (rawStr === '' || rawStr === '-') return rawStr;
+    if (rawStr === '-0') return '-0';
     if (rawStr === 'Error' || rawStr === 'NaN' || rawStr === 'Infinity') {
       return 'Error';
     }
@@ -220,20 +213,117 @@
     return op || '';
   }
 
+  function isOperatorToken(t) {
+    return t === '+' || t === '-' || t === '×' || t === '÷' || t === '^';
+  }
+
   /**
-   * 取得目前算式的即時總和數值 (供貨幣換算、單位轉換與記憶鍵在未按 = 前也能即時運算)
+   * 將 tokens 陣列與當前輸入組合成液晶下半部的完整公式字串
+   * 例如 tokens = ['13', '+', '5', '×', '2', '-'], currentInput = '10'
+   * -> '13 + 5 × 2 − 10'
+   */
+  function formatFormulaTrail(includeCurrentInput) {
+    if (state.tokens.length === 0) {
+      return '';
+    }
+    const parts = state.tokens.map((t) =>
+      isOperatorToken(t) ? formatOperatorSymbol(t) : formatNumberDisplay(t)
+    );
+    let trail = parts.join(' ') + ' ';
+    if (includeCurrentInput && !state.waitingForOperand) {
+      trail += formatNumberDisplay(state.currentInput);
+    }
+    return trail;
+  }
+
+  // ==================== 先乘除後加減 (Shunting-Yard 優先順序運算引擎) ====================
+
+  /**
+   * 依標準數學優先順序（次方 ^ > 乘 × / 除 ÷ > 加 + / 減 -）計算 token 陣列結果
+   */
+  function evaluateTokensWithPrecedence(tokenList) {
+    if (!tokenList || tokenList.length === 0) return 0;
+
+    // 複製一份並移除尾端落單的運算子
+    const cleanTokens = [...tokenList];
+    while (cleanTokens.length > 0 && isOperatorToken(cleanTokens[cleanTokens.length - 1])) {
+      cleanTokens.pop();
+    }
+    if (cleanTokens.length === 0) return 0;
+
+    const precedence = {
+      '+': 1,
+      '-': 1,
+      '×': 2,
+      '÷': 2,
+      '^': 3
+    };
+
+    const applyOp = (a, b, op) => {
+      switch (op) {
+        case '+':
+          return fixPrecision(a + b);
+        case '-':
+          return fixPrecision(a - b);
+        case '×':
+          return fixPrecision(a * b);
+        case '÷':
+          return b === 0 ? NaN : fixPrecision(a / b);
+        case '^':
+          return fixPrecision(Math.pow(a, b));
+        default:
+          return b;
+      }
+    };
+
+    const values = [];
+    const ops = [];
+
+    for (const token of cleanTokens) {
+      if (isOperatorToken(token)) {
+        while (
+          ops.length > 0 &&
+          // 次方 ^ 為右結合，其餘為左結合
+          (token === '^'
+            ? precedence[ops[ops.length - 1]] > precedence[token]
+            : precedence[ops[ops.length - 1]] >= precedence[token])
+        ) {
+          const op = ops.pop();
+          const right = values.pop();
+          const left = values.pop();
+          values.push(applyOp(left, right, op));
+        }
+        ops.push(token);
+      } else {
+        const num = Number(token);
+        if (Number.isNaN(num)) return NaN;
+        values.push(num);
+      }
+    }
+
+    while (ops.length > 0) {
+      const op = ops.pop();
+      const right = values.pop();
+      const left = values.pop();
+      values.push(applyOp(left, right, op));
+    }
+
+    return values.length > 0 ? fixPrecision(values[0]) : 0;
+  }
+
+  /**
+   * 取得目前整條公式依「先乘除後加減」計算出的即時總和 (供貨幣、單位與記憶鍵使用)
    */
   function getActiveNumericValue() {
-    const currentVal = Number(state.currentInput);
-    if (
-      state.previousValue !== null &&
-      state.pendingOperator &&
-      !state.waitingForOperand &&
-      !Number.isNaN(currentVal)
-    ) {
-      return performCalculation(state.previousValue, currentVal, state.pendingOperator);
+    if (state.currentInput === 'Error') return NaN;
+    if (state.tokens.length === 0) {
+      const v = Number(state.currentInput);
+      return Number.isNaN(v) ? 0 : v;
     }
-    return Number.isNaN(currentVal) ? 0 : currentVal;
+    const list = state.waitingForOperand
+      ? [...state.tokens]
+      : [...state.tokens, state.currentInput];
+    return evaluateTokensWithPrecedence(list);
   }
 
   // ==================== 狀態儲存與載入 ====================
@@ -256,6 +346,7 @@
       delete parsed.currency;
       delete parsed.units;
       Object.assign(state, parsed);
+      if (!Array.isArray(state.tokens)) state.tokens = [];
     } catch {
       // 使用預設狀態
     }
@@ -279,7 +370,7 @@
   // ==================== 畫面更新與四大分頁同步 ====================
 
   function updateDisplay() {
-    // 1. 液晶上半部：顯示目前輸入數字或計算結果
+    // 1. 液晶上半部：顯示目前輸入的數字，或按下 = 後結算的答案
     const formattedMain = formatNumberDisplay(state.currentInput);
     el.primaryReadout.textContent = formattedMain;
 
@@ -288,7 +379,7 @@
     el.primaryReadout.classList.toggle('small-digits', charLen > 15);
     el.primaryReadout.scrollLeft = el.primaryReadout.scrollWidth;
 
-    // 2. 液晶左上方：常駐顯示 M = 記憶數值 (不為 0 時直接顯示完整數字，不跳閃逝 Toast)
+    // 2. 液晶左上方：常駐顯示 M = 記憶數值 (不跳底部閃逝 Toast)
     if (state.memory !== 0) {
       el.memoryBadge.textContent = `M = ${formatNumberDisplay(String(state.memory))}`;
     } else {
@@ -296,27 +387,24 @@
     }
     el.btnDegRad.textContent = state.isDegree ? 'DEG' : 'RAD';
 
-    // 3. 液晶下半部：顯示正在累積的完整算式軌跡，或最近完成的完整公式 (如 13 + 5 × 2 − 10 = 26)
-    if (state.runningTrail) {
-      const previewTrail = state.waitingForOperand
-        ? state.runningTrail
-        : `${state.runningTrail}${formattedMain}`;
-      el.historyStripText.textContent = previewTrail;
+    // 3. 液晶下半部：顯示正在累積的完整公式軌跡，或按 = 後的完整結算公式
+    if (state.tokens.length > 0) {
+      el.historyStripText.textContent = formatFormulaTrail(true);
     } else {
       el.historyStripText.textContent = state.lastCompletedLine || '';
     }
     el.historyStripText.scrollLeft = el.historyStripText.scrollWidth;
 
-    // 4. AC 與 C 按鈕文字動態切換 (當主顯示已歸零時顯示 AC，有數字時顯示 C)
+    // 4. AC 與 C 按鈕文字動態切換
     const isCurrentZero = state.currentInput === '0';
     const clearLabel = isCurrentZero ? 'AC' : 'C';
     el.btnClear.textContent = clearLabel;
     if (el.btnClearSci) el.btnClearSci.textContent = clearLabel;
 
-    // 5. 高亮當前等待中的運算子按鈕
+    // 5. 高亮當前剛按下的運算子按鈕
+    const lastToken = state.tokens[state.tokens.length - 1];
     document.querySelectorAll('.key-op[data-action="operator"]').forEach((btn) => {
-      const isPending =
-        state.waitingForOperand && btn.dataset.value === state.pendingOperator;
+      const isPending = state.waitingForOperand && btn.dataset.value === lastToken;
       btn.classList.toggle('active-operator', isPending);
     });
 
@@ -339,11 +427,10 @@
     el.exchangeRateLabel.textContent = `1 ${from} = ${crossRate} ${to}`;
     el.exchangeRateTime.textContent = `↻ ${updatedAt}`;
 
-    const displayExpr = state.runningTrail
-      ? state.waitingForOperand
-        ? state.runningTrail.trim()
-        : `${state.runningTrail}${formatNumberDisplay(state.currentInput)}`
-      : formatNumberDisplay(state.currentInput);
+    const displayExpr =
+      state.tokens.length > 0
+        ? formatFormulaTrail(true).trim()
+        : formatNumberDisplay(state.currentInput);
     el.currencyExprLine.textContent = displayExpr;
 
     const numVal = getActiveNumericValue();
@@ -400,11 +487,10 @@
   }
 
   function updateUnitsDisplay() {
-    const displayExpr = state.runningTrail
-      ? state.waitingForOperand
-        ? state.runningTrail.trim()
-        : `${state.runningTrail}${formatNumberDisplay(state.currentInput)}`
-      : formatNumberDisplay(state.currentInput);
+    const displayExpr =
+      state.tokens.length > 0
+        ? formatFormulaTrail(true).trim()
+        : formatNumberDisplay(state.currentInput);
     el.unitExprLine.textContent = displayExpr;
 
     const numVal = getActiveNumericValue();
@@ -473,6 +559,7 @@
         vibrateTap();
         state.currentInput = String(item.rawResult || item.result.replace(/,/g, ''));
         state.waitingForOperand = false;
+        state.justEvaluated = false;
         el.tapeDrawer.classList.add('hidden');
         updateDisplay();
       });
@@ -483,30 +570,14 @@
     el.tapeList.scrollTop = el.tapeList.scrollHeight;
   }
 
-  // ==================== 運算核心邏輯 (V3 完整公式累積 + 全狀態防呆) ====================
-
-  function performCalculation(firstVal, secondVal, operator) {
-    switch (operator) {
-      case '+':
-        return fixPrecision(firstVal + secondVal);
-      case '-':
-        return fixPrecision(firstVal - secondVal);
-      case '×':
-        return fixPrecision(firstVal * secondVal);
-      case '÷':
-        if (secondVal === 0) return NaN;
-        return fixPrecision(firstVal / secondVal);
-      case '^':
-        return fixPrecision(Math.pow(firstVal, secondVal));
-      default:
-        return secondVal;
-    }
-  }
+  // ==================== 運算核心邏輯 (先乘除後加減，按 = 才結算) ====================
 
   function handleDigit(digit) {
-    if (state.currentInput === 'Error') {
+    if (state.currentInput === 'Error' || state.justEvaluated) {
       state.currentInput = digit;
+      state.tokens = [];
       state.waitingForOperand = false;
+      state.justEvaluated = false;
       return;
     }
 
@@ -529,7 +600,15 @@
   }
 
   function handleDecimal() {
-    if (state.waitingForOperand || state.currentInput === 'Error') {
+    if (state.currentInput === 'Error' || state.justEvaluated) {
+      state.currentInput = '0.';
+      state.tokens = [];
+      state.waitingForOperand = false;
+      state.justEvaluated = false;
+      return;
+    }
+
+    if (state.waitingForOperand) {
       state.currentInput = '0.';
       state.waitingForOperand = false;
       return;
@@ -540,65 +619,53 @@
     }
   }
 
+  /**
+   * 按下運算子 (+, -, ×, ÷, ^)：
+   * - 不在途中把 13 + 5 強制結算成 18！
+   * - 而是將數字與運算子推進 state.tokens 累積完整公式，直到按下 = 才依「先乘除後加減」結算
+   */
   function handleOperator(nextOperator) {
+    if (state.currentInput === 'Error') return;
     const inputValue = Number(state.currentInput);
     if (Number.isNaN(inputValue)) return;
 
-    const opSym = formatOperatorSymbol(nextOperator);
+    state.justEvaluated = false;
 
-    // 若剛按過運算子又馬上換按另一個運算子，直接替換尾端運算子
-    if (state.pendingOperator && state.waitingForOperand) {
-      state.pendingOperator = nextOperator;
-      state.runningTrail = state.runningTrail.replace(/[+\-−×÷^]\s*$/, `${opSym} `);
+    // 若剛按過一個運算子又馬上換按另一個運算子，直接替換最後一個運算子
+    if (state.waitingForOperand && state.tokens.length > 0) {
+      state.tokens[state.tokens.length - 1] = nextOperator;
       return;
     }
 
-    if (state.previousValue === null) {
-      state.previousValue = inputValue;
-      state.runningTrail = `${formatNumberDisplay(state.currentInput)} ${opSym} `;
-    } else if (state.pendingOperator) {
-      const result = performCalculation(
-        state.previousValue,
-        inputValue,
-        state.pendingOperator
-      );
-
-      if (Number.isNaN(result) || !Number.isFinite(result)) {
-        state.currentInput = 'Error';
-        state.previousValue = null;
-        state.pendingOperator = null;
-        state.runningTrail = '';
-        state.waitingForOperand = true;
-        return;
-      }
-
-      state.previousValue = result;
-      state.currentInput = String(result);
-      state.runningTrail += `${formatNumberDisplay(String(inputValue))} ${opSym} `;
-    }
-
+    // 將當前輸入的數字正規化後連同運算子加入公式 tokens
+    const normalizedNum = String(fixPrecision(inputValue));
+    state.tokens.push(normalizedNum, nextOperator);
     state.waitingForOperand = true;
-    state.pendingOperator = nextOperator;
   }
 
+  /**
+   * 按下等於鍵 (=)：
+   * - 將整串累積的公式依「先乘除後加減」一次結算！
+   * - 例如 13 + 5 × 2 − 10：先算 5 × 2 = 10，再算 13 + 10 − 10 = 13
+   */
   function handleEquals() {
-    const inputValue = Number(state.currentInput);
-    if (state.pendingOperator === null || state.previousValue === null) {
+    if (state.currentInput === 'Error' || state.tokens.length === 0) {
       return;
     }
 
-    const result = performCalculation(
-      state.previousValue,
-      inputValue,
-      state.pendingOperator
-    );
+    const finalTokens = [...state.tokens];
+    // 若使用者按完最後一個數字（或停在運算子時自動補上當前畫面數字）
+    const inputVal = Number(state.currentInput);
+    const normalizedLast = Number.isNaN(inputVal)
+      ? '0'
+      : String(fixPrecision(inputVal));
+    finalTokens.push(normalizedLast);
 
-    const opSym = formatOperatorSymbol(state.pendingOperator);
-    const exprRecord = `${
-      state.runningTrail
-        ? state.runningTrail.trim()
-        : `${formatNumberDisplay(String(state.previousValue))} ${opSym}`
-    } ${formatNumberDisplay(String(inputValue))}`;
+    const exprRecord = finalTokens
+      .map((t) => (isOperatorToken(t) ? formatOperatorSymbol(t) : formatNumberDisplay(t)))
+      .join(' ');
+
+    const result = evaluateTokensWithPrecedence(finalTokens);
 
     if (Number.isNaN(result) || !Number.isFinite(result)) {
       state.currentInput = 'Error';
@@ -621,38 +688,42 @@
       }
     }
 
-    state.previousValue = null;
-    state.pendingOperator = null;
-    state.runningTrail = '';
+    state.tokens = [];
     state.waitingForOperand = true;
+    state.justEvaluated = true;
   }
 
+  /**
+   * 百分比 (%) 邏輯：
+   * - 若前一個運算子是 + 或 - (如 100 + 10%)：取前一個基準值的百分比 (100 * 10% = 10)
+   * - 若前一個運算子是 × 或 ÷ 或單獨數字：直接除以 100
+   */
   function handlePercent() {
     const currentVal = Number(state.currentInput);
     if (Number.isNaN(currentVal)) return;
 
     let percentVal;
-    if (
-      state.previousValue !== null &&
-      (state.pendingOperator === '+' || state.pendingOperator === '-')
-    ) {
-      percentVal = fixPrecision(state.previousValue * (currentVal / 100));
+    const lastOp = state.tokens[state.tokens.length - 1];
+    if (state.tokens.length >= 2 && (lastOp === '+' || lastOp === '-')) {
+      // 計算前面已累積部分的基準值
+      const baseVal = evaluateTokensWithPrecedence(state.tokens.slice(0, -1));
+      percentVal = fixPrecision(baseVal * (currentVal / 100));
     } else {
       percentVal = fixPrecision(currentVal / 100);
     }
 
     state.currentInput = String(percentVal);
     state.waitingForOperand = false;
+    state.justEvaluated = false;
   }
 
   /**
-   * 正負號切換 (+/-)：
-   * - 若剛按過運算子準備輸入第二個數 (waitingForOperand = true)，按 +/- 會預置 '-0' 讓後續輸入直接變負數
+   * 正負號切換 (+/-)
    */
   function handleNegate() {
     if (state.currentInput === 'Error') return;
 
-    if (state.waitingForOperand && state.pendingOperator !== null) {
+    if (state.waitingForOperand && state.tokens.length > 0) {
       state.currentInput = '-0';
       state.waitingForOperand = false;
       return;
@@ -665,21 +736,22 @@
       state.currentInput = '-' + state.currentInput;
     }
     state.waitingForOperand = false;
+    state.justEvaluated = false;
   }
 
   /**
-   * 退格鍵 (DEL / ⌫)：全狀態暢通
-   * - 無論在輸入中、剛按完運算子、或剛按完 =，按下 DEL 皆可針對目前顯示數字退格修改
+   * 退格鍵 (DEL / ⌫)：全狀態有效
    */
   function handleBackspace() {
     if (state.currentInput === 'Error') {
       state.currentInput = '0';
       state.waitingForOperand = false;
+      state.justEvaluated = false;
       return;
     }
 
-    // 解除等待狀態，直接針對當前顯示數字退格
     state.waitingForOperand = false;
+    state.justEvaluated = false;
 
     if (
       state.currentInput.length <= 1 ||
@@ -693,19 +765,19 @@
 
   /**
    * C / AC 清除鍵：
-   * - 當主顯示不為 '0' 時 (按鈕顯示 C)：按一下將當前輸入歸零為 '0'，保留已累積的算式軌跡，按鈕隨即變為 AC
-   * - 當主顯示已為 '0' 時 (按鈕顯示 AC)：按一下清除整條進行中算式與暫存狀態
+   * - 當 currentInput 不為 '0' 時 (按鈕顯示 C)：清除當前輸入歸零為 '0'，保留已累積的公式 tokens，按鈕隨即切換為 AC
+   * - 當 currentInput 已為 '0' 時 (按鈕顯示 AC)：清除整條公式 tokens 與歷史預覽
    */
   function handleClear() {
     if (state.currentInput !== '0') {
       state.currentInput = '0';
       state.waitingForOperand = false;
+      state.justEvaluated = false;
     } else {
       state.currentInput = '0';
-      state.previousValue = null;
-      state.pendingOperator = null;
-      state.runningTrail = '';
+      state.tokens = [];
       state.waitingForOperand = false;
+      state.justEvaluated = false;
     }
   }
 
@@ -730,6 +802,7 @@
       case 'mr':
         state.currentInput = String(state.memory);
         state.waitingForOperand = false;
+        state.justEvaluated = false;
         break;
     }
   }
@@ -743,9 +816,11 @@
     const res = fixPrecision(Math.sqrt(val));
     const exprText = `√(${formatNumberDisplay(state.currentInput)})`;
     const resText = formatNumberDisplay(String(res));
-    state.lastCompletedLine = `${exprText} = ${resText}`;
+    if (state.tokens.length === 0) {
+      state.lastCompletedLine = `${exprText} = ${resText}`;
+    }
     state.currentInput = String(res);
-    state.waitingForOperand = true;
+    state.waitingForOperand = false;
   }
 
   function handleScientificFn(fnName) {
@@ -822,15 +897,17 @@
       const cleanRes = fixPrecision(res);
       const exprText = `${label}(${formatNumberDisplay(state.currentInput)})`;
       const resText = formatNumberDisplay(String(cleanRes));
-      state.lastCompletedLine = `${exprText} = ${resText}`;
+      if (state.tokens.length === 0) {
+        state.lastCompletedLine = `${exprText} = ${resText}`;
+        state.history.push({
+          expr: exprText,
+          result: resText,
+          rawResult: String(cleanRes)
+        });
+      }
       state.currentInput = String(cleanRes);
-      state.history.push({
-        expr: exprText,
-        result: resText,
-        rawResult: String(cleanRes)
-      });
     }
-    state.waitingForOperand = true;
+    state.waitingForOperand = false;
   }
 
   function toggleFnRowPage() {
@@ -894,6 +971,7 @@
           state.currentInput =
             value === 'π' ? String(fixPrecision(Math.PI)) : String(fixPrecision(Math.E));
           state.waitingForOperand = false;
+          state.justEvaluated = false;
           break;
         case 'toggle-2nd':
           state.isSecondFn = !state.isSecondFn;
@@ -909,8 +987,14 @@
             : 'tan';
           break;
         case 'parens':
-          if (state.pendingOperator && !state.waitingForOperand) {
-            handleEquals();
+          if (state.tokens.length > 0 && !state.waitingForOperand) {
+            // 將目前已輸入段落先行結算為單一數值（等同對前面整段加上括號優先計算）
+            const subResult = getActiveNumericValue();
+            if (Number.isFinite(subResult)) {
+              state.tokens = [];
+              state.currentInput = String(subResult);
+              state.waitingForOperand = false;
+            }
           } else {
             handleScientificFn('sq');
           }
